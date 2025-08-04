@@ -1,0 +1,77 @@
+
+// src/utils/constants.js
+const TRANSACTION_TYPES = {
+  DEPOSIT: 'DEPOSIT',
+  WITHDRAWAL: 'WITHDRAWAL',
+  TRANSFER: 'TRANSFER',
+  PAYMENT: 'PAYMENT',
+  REFUND: 'REFUND'
+};
+
+const TRANSACTION_STATUS = {
+  PENDING: 'PENDING',
+  COMPLETED: 'COMPLETED',
+  FAILED: 'FAILED',
+  CANCELLED: 'CANCELLED'
+};
+
+const USER_ROLES = {
+  ADMIN: 'ADMIN',
+  MEMBER: 'MEMBER'
+};
+
+const ACCOUNT_STATUS = {
+  ACTIVE: 'ACTIVE',
+  SUSPENDED: 'SUSPENDED',
+  PENDING: 'PENDING'
+};
+
+const CARD_TYPES = {
+  DEBIT: 'DEBIT',
+  CREDIT: 'CREDIT',
+  PREPAID: 'PREPAID'
+};
+
+const CARD_STATUS = {
+  ACTIVE: 'ACTIVE',
+  BLOCKED: 'BLOCKED',
+  EXPIRED: 'EXPIRED',
+  CANCELLED: 'CANCELLED'
+};
+
+const LOAN_STATUS = {
+  ACTIVE: 'ACTIVE',
+  COMPLETED: 'COMPLETED',
+  DEFAULTED: 'DEFAULTED',
+  PENDING: 'PENDING'
+};
+
+const INVESTMENT_STATUS = {
+  ACTIVE: 'ACTIVE',
+  MATURED: 'MATURED',
+  CANCELLED: 'CANCELLED'
+};
+
+const RESPONSE_MESSAGES = {
+  SUCCESS: 'Operation completed successfully',
+  CREATED: 'Resource created successfully',
+  UPDATED: 'Resource updated successfully',
+  DELETED: 'Resource deleted successfully',
+  NOT_FOUND: 'Resource not found',
+  UNAUTHORIZED: 'Authentication required',
+  FORBIDDEN: 'Access denied',
+  VALIDATION_ERROR: 'Validation failed',
+  INTERNAL_ERROR: 'Internal server error'
+};
+
+module.exports = {
+  TRANSACTION_TYPES,
+  TRANSACTION_STATUS,
+  USER_ROLES,
+  ACCOUNT_STATUS,
+  CARD_TYPES,
+  CARD_STATUS,
+  LOAN_STATUS,
+  INVESTMENT_STATUS,
+  RESPONSE_MESSAGES
+};
