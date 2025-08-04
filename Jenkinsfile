@@ -68,7 +68,7 @@ pipeline {
                         bat 'pm2 restart spendtrack-api || exit 0'
                     } else {
                         echo "PM2 process 'spendtrack-api' not found. Starting..."
-                        bat 'pm2 start src/server.mjs --name spendtrack-api'
+                        bat 'pm2 start server.mjs --name spendtrack-api'
                     }
 
                     echo "💾 Saving PM2 configuration..."
