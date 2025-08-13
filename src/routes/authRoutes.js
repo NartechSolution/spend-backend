@@ -1,10 +1,12 @@
 // src/routes/authRoutes.js
 const express = require('express');
+const multer = require('multer'); // ✅ add this line
 const { body } = require('express-validator');
 
 const rateLimiter = require('../middleware/rateLimiter');
 const authcontroller = require('../controllers/authController');
 const upload = require('../middleware/upload');
+
 
 const router = express.Router();
 
@@ -66,6 +68,7 @@ router.post('/forgot-password', authcontroller.forgotPassword);
 router.post('/reset-password', authcontroller.resetPassword);
 router.post('/refresh-token', authcontroller.refreshToken);
 router.post('/logout', authcontroller.logout);
+router.get('/plan/:userId', authcontroller.getPlansByUserId);
 router.post('/update-subscription',  upload.single('paymentProof'),  handleUploadErrors,authcontroller.updateSubscription
 );
 

@@ -1,6 +1,4 @@
 
-
-// src/controllers/cardController.js
 const { PrismaClient } = require('@prisma/client');
 const { validationResult } = require('express-validator');
 const { AppError } = require('../utils/errors');
@@ -8,8 +6,7 @@ const { AppError } = require('../utils/errors');
 const prisma = new PrismaClient();
 
 class CardController {
-  
-    constructor() {
+  constructor() {
     this.getCards = this.getCards.bind(this);
     this.getCard = this.getCard.bind(this);
     this.createCard = this.createCard.bind(this);
@@ -18,16 +15,17 @@ class CardController {
     this.unblockCard = this.unblockCard.bind(this);
     this.deleteCard = this.deleteCard.bind(this);
     this.getCardExpenseStatistics = this.getCardExpenseStatistics.bind(this);
-    // this.maskCardNumber = this.maskCardNumber.bind(this);
   }
+
   // Get all cards for user
   async getCards(req, res) {
     const userId = req.user.userId;
-    const { status, cardType } = req.query;
+    const { status, cardType, cardNetwork } = req.query;
 
     const where = { userId };
     if (status) where.status = status;
     if (cardType) where.cardType = cardType;
+    if (cardNetwork) where.cardNetwork = cardNetwork;
 
     const cards = await prisma.card.findMany({
       where,
@@ -41,6 +39,9 @@ class CardController {
         cardHolderName: true,
         expiryDate: true,
         cardType: true,
+        cardForm: true,
+        cardNetwork: true,        // Added cardNetwork field
+        currency: true,
         status: true,
         balance: true,
         creditLimit: true,
@@ -104,7 +105,7 @@ class CardController {
     });
   }
 
-  // Create new card (NO GENERATION)
+  // Create new card with card network support
   async createCard(req, res) {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -117,10 +118,40 @@ class CardController {
       cardNumber,
       expiryDate,
       cvv,
-      cardType,
+      cardType,      // credit/debit
+      cardForm,      // PLASTIC or VIRTUAL
+      cardNetwork,   // VISA, MASTERCARD, MADA
       bank,
-      creditLimit
+      creditLimit,
+      currency,      // SAR or USD     // selected program
     } = req.body;
+
+    // Validate card network
+    const validNetworks = ['VISA', 'MASTERCARD', 'MADA'];
+    if (!validNetworks.includes(cardNetwork)) {
+      throw new AppError('Invalid card network. Must be one of: VISA, MASTERCARD, MADA', 400);
+    }
+
+    // Validate card form
+    const validForms = ['VIRTUAL', 'PHYSICAL'];
+    if (!validForms.includes(cardForm)) {
+      throw new AppError('Invalid card form. Must be VIRTUAL or PHYSICAL', 400);
+    }
+
+    // Check if user already has a card with this network and form combination
+    const existingCard = await prisma.card.findFirst({
+      where: {
+        userId,
+        cardNetwork,
+        cardForm,
+        status: { not: 'DELETED' }
+      }
+    });
+
+    // For physical cards, limit one per network
+    if (cardForm === 'PHYSICAL' && existingCard) {
+      throw new AppError(`You already have a ${cardNetwork} ${cardForm.toLowerCase()} card`, 400);
+    }
 
     const existingCards = await prisma.card.count({
       where: { userId }
@@ -134,8 +165,12 @@ class CardController {
         expiryDate: new Date(expiryDate),
         cvv,
         cardType,
+        cardForm,
+        cardNetwork,
         bank,
         creditLimit: creditLimit ? parseFloat(creditLimit) : null,
+        currency,
+ 
         isDefault: existingCards === 0
       },
       select: {
@@ -144,10 +179,14 @@ class CardController {
         cardHolderName: true,
         expiryDate: true,
         cardType: true,
+        cardForm: true,
+        cardNetwork: true,
+        currency: true,
         status: true,
         balance: true,
         creditLimit: true,
         bank: true,
+      
         isDefault: true,
         createdAt: true
       }
@@ -169,7 +208,15 @@ class CardController {
   async updateCard(req, res) {
     const { id } = req.params;
     const userId = req.user.userId;
-    const { cardHolderName, creditLimit, isDefault } = req.body;
+    const {
+      cardHolderName,
+      creditLimit,
+      isDefault,
+      cardType,
+      cardForm,
+      cardNetwork,
+      currency
+    } = req.body;
 
     const existingCard = await prisma.card.findFirst({
       where: { id, userId }
@@ -177,6 +224,14 @@ class CardController {
 
     if (!existingCard) {
       throw new AppError('Card not found', 404);
+    }
+
+    // Validate card network if provided
+    if (cardNetwork) {
+      const validNetworks = ['VISA', 'MASTERCARD', 'MADA'];
+      if (!validNetworks.includes(cardNetwork)) {
+        throw new AppError('Invalid card network. Must be one of: VISA, MASTERCARD, MADA', 400);
+      }
     }
 
     if (isDefault) {
@@ -188,18 +243,24 @@ class CardController {
 
     const updatedCard = await prisma.card.update({
       where: { id },
-    data: {
-  ...(cardHolderName !== undefined && cardHolderName !== null && { cardHolderName: cardHolderName.toUpperCase() }),
-  ...(creditLimit !== undefined && { creditLimit: creditLimit !== null ? parseFloat(creditLimit) : null }),
-  ...(isDefault !== undefined && { isDefault })
-}
-,
+      data: {
+        ...(cardHolderName !== undefined && cardHolderName !== null && { cardHolderName: cardHolderName.toUpperCase() }),
+        ...(creditLimit !== undefined && { creditLimit: creditLimit !== null ? parseFloat(creditLimit) : null }),
+        ...(isDefault !== undefined && { isDefault }),
+        ...(cardType !== undefined && { cardType }),
+        ...(cardForm !== undefined && { cardForm }),
+        ...(cardNetwork !== undefined && { cardNetwork }),
+        ...(currency !== undefined && { currency }),
+      },
       select: {
         id: true,
         cardNumber: true,
         cardHolderName: true,
         expiryDate: true,
         cardType: true,
+        cardForm: true,
+        cardNetwork: true,
+        currency: true,
         status: true,
         balance: true,
         creditLimit: true,
@@ -244,7 +305,7 @@ class CardController {
       data: { status: 'BLOCKED' }
     });
 
-    console.log(`Card ${card.cardNumber} blocked by user ${userId}. Reason: ${reason || 'Not specified'}`);
+    console.log(`Card ${card.cardNumber} (${card.cardNetwork}) blocked by user ${userId}. Reason: ${reason || 'Not specified'}`);
 
     res.json({
       success: true,
@@ -343,14 +404,15 @@ class CardController {
     });
   }
 
-  // Card expense statistics
+  // Card expense statistics with network breakdown
   async getCardExpenseStatistics(userId) {
     const cards = await prisma.card.findMany({
       where: { userId },
-      select: { id: true, bank: true }
+      select: { id: true, bank: true, cardNetwork: true }
     });
 
     const bankExpenses = {};
+    const networkExpenses = {};
 
     for (const card of cards) {
       const expenses = await prisma.transaction.aggregate({
@@ -362,31 +424,47 @@ class CardController {
         _sum: { amount: true }
       });
 
-      bankExpenses[card.bank] = (bankExpenses[card.bank] || 0) + Number(expenses._sum.amount || 0);
+      const amount = Number(expenses._sum.amount || 0);
+
+      // Group by bank
+      bankExpenses[card.bank] = (bankExpenses[card.bank] || 0) + amount;
+
+      // Group by card network
+      networkExpenses[card.cardNetwork] = (networkExpenses[card.cardNetwork] || 0) + amount;
     }
 
-    const expenseData = Object.entries(bankExpenses).map(([bank, amount]) => ({
+    // Format bank expenses
+    const bankExpenseData = Object.entries(bankExpenses).map(([bank, amount]) => ({
       bank,
       amount,
       percentage: 0
     }));
 
-    const total = expenseData.reduce((sum, item) => sum + item.amount, 0);
-    expenseData.forEach(item => {
-      item.percentage = total > 0 ? ((item.amount / total) * 100).toFixed(1) : 0;
+    // Format network expenses
+    const networkExpenseData = Object.entries(networkExpenses).map(([network, amount]) => ({
+      network,
+      amount,
+      percentage: 0
+    }));
+
+    const totalBankExpenses = bankExpenseData.reduce((sum, item) => sum + item.amount, 0);
+    const totalNetworkExpenses = networkExpenseData.reduce((sum, item) => sum + item.amount, 0);
+
+    // Calculate percentages
+    bankExpenseData.forEach(item => {
+      item.percentage = totalBankExpenses > 0 ? ((item.amount / totalBankExpenses) * 100).toFixed(1) : 0;
+    });
+
+    networkExpenseData.forEach(item => {
+      item.percentage = totalNetworkExpenses > 0 ? ((item.amount / totalNetworkExpenses) * 100).toFixed(1) : 0;
     });
 
     return {
-      totalExpenses: total,
-      byBank: expenseData
+      totalExpenses: totalBankExpenses,
+      byBank: bankExpenseData,
+      byNetwork: networkExpenseData // Added network breakdown
     };
   }
-
-  // Mask card number
-  // maskCardNumber(cardNumber) {
-  //   if (!cardNumber || cardNumber.length < 8) return cardNumber;
-  //   return cardNumber.slice(0, 4) + ' **** **** ' + cardNumber.slice(-4);
-  // }
 }
 
 module.exports = new CardController();

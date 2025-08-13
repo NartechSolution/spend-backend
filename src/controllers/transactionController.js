@@ -13,6 +13,7 @@ class TransactionController {
     this.getTransaction = this.getTransaction.bind(this);
     this.createTransaction = this.createTransaction.bind(this);
     this.processTransaction = this.processTransaction.bind(this);
+     this.downloadReceipt = this.downloadReceipt.bind(this);
   }
 
   // Get all transactions for user
@@ -89,31 +90,39 @@ class TransactionController {
       }
     });
   }
-
-  // Get single transaction
   async getTransaction(req, res) {
-    const { id } = req.params;
+  try {
+    let { id } = req.params;
     const userId = req.user.userId;
 
-    
+    if (!id) {
+      throw new AppError('Transaction ID is required', 400);
+    }
 
-    const transaction = await prisma.transaction.findFirst({
-      where: { 
-        id,
-        userId 
-      },
-      include: {
-        senderAccount: {
-          select: { accountNumber: true }
-        },
-        receiverAccount: {
-          select: { accountNumber: true }
-        },
-        card: {
-          select: { cardNumber: true, bank: true, cardType: true }
-        }
-      }
-    });
+    // Optional: Convert id to number if your DB uses numeric id
+    // id = Number(id);
+    // if (isNaN(id)) throw new AppError('Invalid transaction ID format', 400);
+
+    console.log('Searching transaction with id:', id, 'userId:', userId);
+
+   const transaction = await prisma.transaction.findFirst({
+  where: {
+    transactionId: id,  // use transactionId here
+    userId,
+  },
+  include: {
+    senderAccount: {
+      select: { accountNumber: true }
+    },
+    receiverAccount: {
+      select: { accountNumber: true }
+    },
+    card: {
+      select: { cardNumber: true, bank: true, cardType: true }
+    }
+  }
+});
+    console.log('Transaction by id only:', transaction);
 
     if (!transaction) {
       throw new AppError('Transaction not found', 404);
@@ -131,7 +140,21 @@ class TransactionController {
         }
       }
     });
+  } catch (error) {
+    if (error instanceof AppError) {
+      return res.status(error.statusCode).json({
+        success: false,
+        message: error.message
+      });
+    }
+    
+    console.error('Error in getTransaction:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error'
+    });
   }
+}
 
   // Create new transaction
   // Enhanced createTransaction method with better validation
@@ -610,17 +633,43 @@ async processTransaction(transaction, prismaClient) {
     });
   }
 
-  // Download transaction receipt/statement
-  async downloadReceipt(req, res) {
+ 
+// Fixed downloadReceipt method
+async downloadReceipt(req, res) {
+  try {
     const { id } = req.params;
     const userId = req.user.userId;
 
+    // Validate that id is provided
+    if (!id) {
+      throw new AppError('Transaction ID is required', 400);
+    }
+
     const transaction = await prisma.transaction.findFirst({
-      where: { id, userId },
+      where: { transactionId: id, userId },
+
       include: {
-        senderAccount: true,
-        receiverAccount: true,
-        card: true,
+        senderAccount: {
+          select: {
+            accountNumber: true,
+         
+          }
+        },
+        receiverAccount: {
+          select: {
+            accountNumber: true,
+          
+       
+          }
+        },
+        card: {
+          select: {
+            cardNumber: true,
+            bank: true,
+            cardType: true,
+            expiryDate: true
+          }
+        },
         user: {
           select: {
             firstName: true,
@@ -635,28 +684,54 @@ async processTransaction(transaction, prismaClient) {
       throw new AppError('Transaction not found', 404);
     }
 
-    // Generate receipt data (you can implement PDF generation here)
+    // Only allow receipt download for completed transactions
+    if (transaction.status !== 'COMPLETED') {
+      throw new AppError('Receipt is only available for completed transactions', 400);
+    }
+
+    // Generate receipt data
     const receiptData = {
       transactionId: transaction.transactionId,
       date: transaction.createdAt,
+      processedAt: transaction.processedAt,
       type: transaction.type,
       amount: transaction.amount,
       status: transaction.status,
       description: transaction.description,
+      category: transaction.category,
+      reference: transaction.reference,
       user: transaction.user,
-      account: transaction.senderAccount,
+      senderAccount: transaction.senderAccount,
+      receiverAccount: transaction.receiverAccount,
       card: transaction.card ? {
         ...transaction.card,
         cardNumber: this.maskCardNumber(transaction.card.cardNumber)
-      } : null
+      } : null,
+      // Add timestamp for receipt generation
+      generatedAt: new Date().toISOString()
     };
 
     res.json({
       success: true,
-      message: 'Receipt data generated',
+      message: 'Receipt data generated successfully',
       data: { receipt: receiptData }
     });
+  } catch (error) {
+    // Handle errors properly
+    if (error instanceof AppError) {
+      return res.status(error.statusCode).json({
+        success: false,
+        message: error.message
+      });
+    }
+    
+    console.error('Error in downloadReceipt:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error'
+    });
   }
+}
 
   // Helper method to mask card number
   maskCardNumber(cardNumber) {

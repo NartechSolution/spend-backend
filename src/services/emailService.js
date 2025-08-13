@@ -179,7 +179,8 @@ class EmailService {
   }
 
   async sendPasswordResetEmail(email, token, firstName) {
-    const resetUrl = `${process.env.BASE_URL}/reset-password?token=${token}`;
+    const resetUrl = `http://localhost:3000/resetpassword?token=${token}`;
+    console.log(resetUrl)
     const html = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <h2 style="color: #4F46E5;">Password Reset Request</h2>

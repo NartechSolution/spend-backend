@@ -33,9 +33,26 @@ const loginLimiter = rateLimit({
     message: 'Too many login attempts, please try again later.'
   }
 });
+// General API rate limit
+
+
+// Stricter rate limit for subscription operations
+const subscriptionLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000, // 5 minutes
+  max: 10, // limit each IP to 10 subscription operations per 5 minutes
+  message: {
+    success: false,
+    message: 'Too many subscription requests, please try again later'
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+
+});
 
 module.exports = {
   generalLimiter,
   strictLimiter,
-  loginLimiter
+  loginLimiter,
+
+  subscriptionLimiter
 };

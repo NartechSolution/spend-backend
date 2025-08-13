@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const compression = require('compression');
+const path = require('path');
 const morgan = require('morgan');
 require('express-async-errors');
 require('dotenv').config();
@@ -20,6 +21,7 @@ const loanRoutes = require('./src/routes/loanRoutes');
 const investmentRoutes = require('./src/routes/investmentRoutes');
 const invoiceRoutes = require('./src/routes/invoiceRoutes');
 const dashboardRoutes = require('./src/routes/dashboardRoutes');
+const subscriptionRoute=require("./src/routes/subscriptionRoute")
 
 // Import middleware
 const errorHandler = require('./src/middleware/errorHandler');
@@ -30,12 +32,7 @@ const PORT = process.env.PORT || 5000;
 
 // Security middleware
 app.use(helmet());
-app.use(cors({
-  origin: process.env.NODE_ENV === 'production' 
-    ? ['https://yourdomain.com'] 
-    : ['http://localhost:3000', 'http://localhost:3001'],
-  credentials: true
-}));
+app.use(cors()); 
 
 // General middleware
 app.use(compression());
@@ -55,6 +52,7 @@ app.get('/health', (req, res) => {
   });
 });
 
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // API routes
 const apiVersion = process.env.API_VERSION || 'v1';
@@ -67,6 +65,7 @@ app.use(`/api/${apiVersion}/loans`, loanRoutes);
 app.use(`/api/${apiVersion}/investments`, investmentRoutes);
 app.use(`/api/${apiVersion}/invoices`, invoiceRoutes);
 app.use(`/api/${apiVersion}/dashboard`, dashboardRoutes);
+app.use(`/api/${apiVersion}/subscriptions`,subscriptionRoute)
 
 // 404 handler
 app.use('*', (req, res) => {
