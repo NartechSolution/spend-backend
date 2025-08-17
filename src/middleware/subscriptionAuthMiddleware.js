@@ -24,7 +24,7 @@ const authenticateToken = async (req, res, next) => {
     // Verify token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     
-    // Get user details from database
+    // Get user details from database - FIXED: Use 'status' instead of 'isActive'
     const user = await prisma.user.findUnique({
       where: { id: decoded.userId },
       select: {
@@ -33,7 +33,7 @@ const authenticateToken = async (req, res, next) => {
         firstName: true,
         lastName: true,
         role: true,
-        isActive: true
+        status: true  // Changed from 'isActive' to 'status'
       }
     });
 
@@ -44,10 +44,11 @@ const authenticateToken = async (req, res, next) => {
       });
     }
 
-    if (!user.isActive) {
+    // Check if user is active - FIXED: Use status field
+    if (user.status !== 'ACTIVE') {
       return res.status(401).json({
         success: false,
-        message: 'Account is deactivated'
+        message: 'Account is not active'
       });
     }
 

@@ -64,50 +64,283 @@ class UserController {
       }
     });
   }
-
   async getPayments(req, res) {
-  const payments = await prisma.payment.findMany({
-    include: {
-      user: true,
-      subscription: true
-    }
-  });
+    try {
+      const payments = await prisma.payment.findMany({
+        include: {
+          subscription: {
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  email: true,
+                  firstName: true,
+                  lastName: true,
+                  companyName: true,
+                  phone: true
+                }
+              },
+              plan: {
+                select: {
+                  id: true,
+                  name: true,
+                  displayName: true,
+                  type: true,
+                  monthlyPrice: true,
+                  yearlyPrice: true,
+                  currency: true
+                }
+              }
+            }
+          }
+        },
+        orderBy: {
+          createdAt: 'desc'
+        }
+      });
 
-  res.json({
-    success: true,
-    data: payments
-  });
+      // Format the response to make it more user-friendly
+      const formattedPayments = payments.map(payment => ({
+        id: payment.id,
+        amount: Number(payment.amount),
+        paymentStatus: payment.paymentStatus,
+        paymentProof: payment.paymentProof,
+        createdAt: payment.createdAt,
+        updatedAt: payment.updatedAt,
+        
+        // User information
+        user: payment.subscription.user,
+        
+        // Plan information
+        plan: payment.subscription.plan,
+        
+        // Subscription information
+        subscription: {
+          id: payment.subscription.id,
+          status: payment.subscription.status,
+          billingCycle: payment.subscription.billingCycle,
+          startDate: payment.subscription.startDate,
+          endDate: payment.subscription.endDate,
+          priceAtPurchase: Number(payment.subscription.priceAtPurchase)
+        }
+      }));
+
+      res.json({
+        success: true,
+        data: {
+          payments: formattedPayments,
+          total: payments.length
+        }
+      });
+    } catch (error) {
+      console.error('Error in getPayments:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to fetch payments',
+        ...(process.env.NODE_ENV === 'development' && { error: error.message })
+      });
+    }
   }
   
   async approvePayment(req, res) {
-  const { paymentId } = req.body;
+    try {
+      const { paymentId } = req.body;
 
-  const payment = await prisma.payment.update({
-    where: { id: paymentId },
-    data: { paymentStatus: 'APPROVED' }
-  });
+      if (!paymentId) {
+        return res.status(400).json({
+          success: false,
+          message: 'Payment ID is required'
+        });
+      }
 
-  res.json({
-    success: true,
-    message: 'Payment approved successfully.',
-    data: payment
-  });
-}
+      // Check if payment exists
+      const existingPayment = await prisma.payment.findUnique({
+        where: { id: paymentId },
+        include: {
+          subscription: {
+            include: {
+              user: true,
+              plan: true
+            }
+          }
+        }
+      });
 
-async declinePayment(req, res) {
-  const { paymentId } = req.body;
+      if (!existingPayment) {
+        return res.status(404).json({
+          success: false,
+          message: 'Payment not found'
+        });
+      }
 
-  const payment = await prisma.payment.update({
-    where: { id: paymentId },
-    data: { paymentStatus: 'DECLINED' }
-  });
+      if (existingPayment.paymentStatus === 'COMPLETED') {
+        return res.status(400).json({
+          success: false,
+          message: 'Payment is already approved'
+        });
+      }
 
-  res.json({
-    success: true,
-    message: 'Payment declined successfully.',
-    data: payment
-  });
-}
+      // Update payment status to COMPLETED
+      const payment = await prisma.payment.update({
+        where: { id: paymentId },
+        data: { paymentStatus: 'COMPLETED' },
+        include: {
+          subscription: {
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  email: true,
+                  firstName: true,
+                  lastName: true
+                }
+              },
+              plan: true
+            }
+          }
+        }
+      });
+
+      // Update the related subscription status
+      await prisma.userSubscription.update({
+        where: { id: payment.subscription.id },
+        data: {
+          status: 'ACTIVE',
+          paymentStatus: 'PAID'
+        }
+      });
+
+      // Update user subscription status
+      await prisma.user.update({
+        where: { id: payment.subscription.userId },
+        data: {
+          subscriptionStatus: 'ACTIVE'
+        }
+      });
+
+      res.json({
+        success: true,
+        message: 'Payment approved successfully.',
+        data: {
+          payment: {
+            id: payment.id,
+            amount: Number(payment.amount),
+            paymentStatus: payment.paymentStatus,
+            user: payment.subscription.user,
+            plan: payment.subscription.plan,
+            subscription: {
+              id: payment.subscription.id,
+              status: payment.subscription.status,
+              paymentStatus: payment.subscription.paymentStatus
+            }
+          }
+        }
+      });
+    } catch (error) {
+      console.error('Error in approvePayment:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to approve payment',
+        ...(process.env.NODE_ENV === 'development' && { error: error.message })
+      });
+    }
+  }
+
+  async declinePayment(req, res) {
+    try {
+      const { paymentId } = req.body;
+
+      if (!paymentId) {
+        return res.status(400).json({
+          success: false,
+          message: 'Payment ID is required'
+        });
+      }
+
+      // Check if payment exists
+      const existingPayment = await prisma.payment.findUnique({
+        where: { id: paymentId },
+        include: {
+          subscription: {
+            include: {
+              user: true,
+              plan: true
+            }
+          }
+        }
+      });
+
+      if (!existingPayment) {
+        return res.status(404).json({
+          success: false,
+          message: 'Payment not found'
+        });
+      }
+
+      if (existingPayment.paymentStatus === 'DECLINED') {
+        return res.status(400).json({
+          success: false,
+          message: 'Payment is already declined'
+        });
+      }
+
+      // Update payment status to DECLINED
+      const payment = await prisma.payment.update({
+        where: { id: paymentId },
+        data: { paymentStatus: 'DECLINED' },
+        include: {
+          subscription: {
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  email: true,
+                  firstName: true,
+                  lastName: true
+                }
+              },
+              plan: true
+            }
+          }
+        }
+      });
+
+      // Update the related subscription status
+      await prisma.userSubscription.update({
+        where: { id: payment.subscription.id },
+        data: {
+          status: 'CANCELLED',
+          paymentStatus: 'FAILED'
+        }
+      });
+
+      res.json({
+        success: true,
+        message: 'Payment declined successfully.',
+        data: {
+          payment: {
+            id: payment.id,
+            amount: Number(payment.amount),
+            paymentStatus: payment.paymentStatus,
+            user: payment.subscription.user,
+            plan: payment.subscription.plan,
+            subscription: {
+              id: payment.subscription.id,
+              status: payment.subscription.status,
+              paymentStatus: payment.subscription.paymentStatus
+            }
+          }
+        }
+      });
+    } catch (error) {
+      console.error('Error in declinePayment:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to decline payment',
+        ...(process.env.NODE_ENV === 'development' && { error: error.message })
+      });
+    }
+  }
 
 
   // Update user profile
@@ -396,7 +629,6 @@ async declinePayment(req, res) {
 async deleteUser(req, res) {
   const { id } = req.params;
 
-  // Prevent deleting own account
   if (id === req.user.userId) {
     throw new AppError('You cannot delete your own account', 400);
   }
@@ -406,6 +638,12 @@ async deleteUser(req, res) {
     throw new AppError('User not found', 404);
   }
 
+  // First delete subscriptions
+  await prisma.userSubscription.deleteMany({
+    where: { userId: id }
+  });
+
+  // Then delete the user
   await prisma.user.delete({
     where: { id }
   });
@@ -415,6 +653,7 @@ async deleteUser(req, res) {
     message: 'User deleted successfully'
   });
 }
+
 
   // Helper methods
   async getUserStatistics(userId) {

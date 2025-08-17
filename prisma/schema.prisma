@@ -23,6 +23,8 @@ model User {
   status           String              @default("PENDING")
   isEmailVerified  Boolean             @default(false)
   isPhoneVerified  Boolean             @default(false)
+  planType         String?             @default("FREE") // FREE, MEMBER, ADMIN
+  subscriptionStatus String?           @default("TRIAL") // ACTIVE, EXPIRED, CANCELLED, TRIAL, PENDING
 
   verificationCode String?
   resetToken       String?
@@ -36,36 +38,60 @@ model User {
   investments      Investment[]
   invoices         Invoice[]
   loans            Loan[]
-  payments         Payment[]
   transactions     Transaction[]
   
   userSubscriptions UserSubscription[]
   trialUsages      TrialUsage[]
+  subscriptionActivityLogs SubscriptionActivityLog[]
 
   @@map("users")
+}
+
+model SubscriptionPlan {
+  id              String    @id @default(uuid())
+  name            String
+  displayName     String
+  type            String    // FREE, MEMBER, ADMIN
+  monthlyPrice    Decimal   @db.Decimal(15, 2)
+  yearlyPrice     Decimal   @db.Decimal(15, 2)
+  currency        String    @default("SAR")
+  features        String    // JSON string of features
+  trialDays       Int       @default(14)
+  maxUsers        Int       @default(1)
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  userSubscriptions UserSubscription[]
+  
+  @@map("subscription_plans")
 }
 
 model UserSubscription {
   id              String    @id @default(uuid())
   userId          String
-  planId          String  // This should reference Subscription.id
+  planId          String
   billingCycle    String    // MONTHLY, YEARLY
-  status          String    @default("ACTIVE")
+  status          String    @default("ACTIVE") // ACTIVE, TRIAL, EXPIRED, CANCELLED, PENDING_PAYMENT
   startDate       DateTime  @default(now())
   endDate         DateTime
   cancelledAt     DateTime?
-  trialUsed       Boolean   @default(false)
+  priceAtPurchase Decimal   @db.Decimal(15, 2)
+  paymentStatus   String    @default("PENDING") // PENDING, PAID, FAILED
   autoRenewal     Boolean   @default(true)
-  metadata        String?
+  metadata        String?   // JSON string for additional data
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
   
-  user            User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  plan            Subscription       @relation(fields: [planId], references: [id]) // Change from SubscriptionPlan to Subscription
+  user            User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan            SubscriptionPlan @relation(fields: [planId], references: [id])
   renewalReminders RenewalReminder[]
+  subscriptionPayments SubscriptionPayment[]
+  payments Payment[]
   
   @@map("user_subscriptions")
 }
+
 model TrialUsage {
   id              String    @id @default(uuid())
   userId          String
@@ -95,6 +121,23 @@ model RenewalReminder {
   @@map("renewal_reminders")
 }
 
+model SubscriptionPayment {
+  id              String    @id @default(uuid())
+  subscriptionId  String
+  amount          Decimal   @db.Decimal(15, 2)
+  currency        String    @default("SAR")
+  status          String    @default("PENDING") // PENDING, PAID, FAILED, REFUNDED
+  paymentMethod   String?   // card, bank_transfer, etc.
+  stripePaymentId String?   // External payment processor ID
+  paidAt          DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  subscription    UserSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  
+  @@map("subscription_payments")
+}
+
 model Payment {
   id             String       @id @default(uuid())
   userId         String
@@ -104,11 +147,11 @@ model Payment {
   paymentProof   String?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
-  subscription   Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
-  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subscription UserSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
 
   @@map("payments")
 }
+
 model Subscription {
   id          String    @id @default(uuid())
   name        String
@@ -121,12 +164,8 @@ model Subscription {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   
-  payments    Payment[]
-  userSubscriptions UserSubscription[]  // Add this line
-  
   @@map("subscriptions")
 }
-
 
 model Account {
   id                      String                  @id @default(uuid())
@@ -285,4 +324,20 @@ model Card {
   transactions   Transaction[]
 
   @@map("cards")
+}
+
+model SubscriptionActivityLog {
+  id             String   @id @default(uuid())
+  userId         String
+  subscriptionId String?
+  action         String   // create, renew, cancel, change_plan, etc.
+  statusCode     Int
+  ipAddress      String?
+  userAgent      String?
+  metadata       String?  // JSON string for additional data
+  createdAt      DateTime @default(now())
+  
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("subscription_activity_logs")
 }

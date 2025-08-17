@@ -61,6 +61,16 @@ router.get('/my',
 );
 
 /**
+ * @route   GET /api/subscriptions/trial-status
+ * @desc    Get current user's trial status
+ * @access  Private
+ */
+router.get('/trial-status',
+  authenticateToken,
+  subscriptionController.getTrialStatus.bind(subscriptionController)
+);
+
+/**
  * @route   GET /api/subscriptions/:id
  * @desc    Get specific subscription details
  * @access  Private (Owner only)
@@ -119,6 +129,17 @@ router.get('/feature/:featureName',
 );
 
 // ===== ADMIN ROUTES =====
+
+/**
+ * @route   POST /api/subscriptions/:id/approve-payment
+ * @desc    Approve payment and activate subscription
+ * @access  Private (Admin only)
+ */
+router.post('/:id/approve-payment',
+  authenticateToken,
+  requireRole('ADMIN'),
+  subscriptionController.approvePayment.bind(subscriptionController)
+);
 
 /**
  * @route   GET /api/subscriptions/admin/analytics

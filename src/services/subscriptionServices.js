@@ -155,78 +155,77 @@ class SubscriptionService {
   }
 
   // Create new subscription
-  async createSubscription(data) {
-    const { userId, planId, billingCycle, plan, userEmail, ipAddress, userAgent } = data;
-
-    // Calculate dates and pricing
-    const startDate = new Date();
+  async createSubscription({ userId, planId, billingCycle, plan, userEmail, ipAddress, userAgent }) {
+  try {
+    // Calculate end date based on plan type
     let endDate;
-    let status;
-    let priceAtPurchase;
-
+    const startDate = new Date();
+    
     if (plan.type === 'FREE') {
-      endDate = new Date(Date.now() + (plan.trialDays || 14) * 24 * 60 * 60 * 1000);
-      status = 'TRIAL';
-      priceAtPurchase = 0;
+      // FREE trial should be 14 days, not 1 month
+      endDate = new Date(startDate.getTime() + (14 * 24 * 60 * 60 * 1000)); // 14 days in milliseconds
     } else {
-      const duration = billingCycle === 'YEARLY' ? 365 : 30;
-      endDate = new Date(Date.now() + duration * 24 * 60 * 60 * 1000);
-      status = 'ACTIVE';
-      priceAtPurchase = billingCycle === 'YEARLY' ? Number(plan.yearlyPrice) : Number(plan.monthlyPrice);
+      // For paid plans, use billing cycle
+      if (billingCycle === 'MONTHLY') {
+        endDate = new Date(startDate);
+        endDate.setMonth(endDate.getMonth() + 1);
+      } else if (billingCycle === 'YEARLY') {
+        endDate = new Date(startDate);
+        endDate.setFullYear(endDate.getFullYear() + 1);
+      }
     }
 
-    // Start transaction
-    const result = await prisma.$transaction(async (tx) => {
-      // Create subscription
-      const subscription = await tx.userSubscription.create({
-        data: {
-          userId,
-          planId,
-          billingCycle,
-          status,
-          startDate,
-          endDate,
-          priceAtPurchase,
-          paymentStatus: plan.type === 'FREE' ? 'PAID' : 'PENDING',
-          autoRenewal: true
-        },
-        include: {
-          plan: true,
-          user: {
-            select: {
-              id: true,
-              email: true,
-              firstName: true,
-              lastName: true
-            }
+    // Create subscription with correct status
+    const subscriptionData = {
+      userId,
+      planId,
+      billingCycle,
+      status: plan.type === 'FREE' ? 'TRIAL' : 'PENDING', // Use TRIAL for free plans
+      startDate,
+      endDate,
+      price: plan.type === 'FREE' ? 0 : (billingCycle === 'YEARLY' ? plan.yearlyPrice : plan.monthlyPrice),
+      currency: 'SAR',
+      metadata: JSON.stringify({
+        ipAddress,
+        userAgent,
+        createdAt: new Date().toISOString()
+      })
+    };
+
+    const subscription = await prisma.userSubscription.create({
+      data: subscriptionData,
+      include: {
+        plan: true,
+        user: {
+          select: {
+            id: true,
+            email: true,
+            firstName: true,
+            lastName: true
           }
         }
-      });
-
-      // Create trial usage record for free plan
-      if (plan.type === 'FREE') {
-        await tx.trialUsage.create({
-          data: {
-            userId,
-            email: userEmail.toLowerCase(),
-            planType: 'FREE',
-            ipAddress,
-            userAgent
-          }
-        });
       }
-
-      // Schedule renewal reminders
-      await this.scheduleRenewalReminders(tx, subscription.id, endDate);
-
-      return subscription;
     });
 
-    return {
-      ...result,
-      features: JSON.parse(result.plan.features || '[]')
-    };
+    // For free trial, record trial usage
+    if (plan.type === 'FREE') {
+      await prisma.trialUsage.create({
+        data: {
+          email: userEmail.toLowerCase(),
+          planType: plan.type,
+          usedAt: new Date(),
+          subscriptionId: subscription.id
+        }
+      });
+    }
+
+    return subscription;
+  } catch (error) {
+    console.error('Create subscription error:', error);
+    throw error;
   }
+}
+
 
   // Renew subscription
   async renewSubscription(data) {
@@ -359,7 +358,7 @@ class SubscriptionService {
     const { subscriptionId, currentPlan, newPlan, proratedAmount, paymentResult } = data;
 
     const result = await prisma.$transaction(async (tx) => {
-      // Update subscription
+      // Update subscription plan (no payment processing)
       const updatedSubscription = await tx.userSubscription.update({
         where: { id: subscriptionId },
         data: {
@@ -375,8 +374,8 @@ class SubscriptionService {
         },
         include: {
           plan: true,
-          user: {
-            select: { id: true, email: true, firstName: true, lastName: true }
+          user: { 
+            select: { id: true, email: true, firstName: true, lastName: true } 
           }
         }
       });
@@ -650,6 +649,83 @@ class SubscriptionService {
         data: remindersToCreate
       });
     }
+  }
+
+  // Approve payment and activate subscription
+  async approvePayment(paymentId) {
+    const payment = await prisma.subscriptionPayment.findUnique({
+      where: { id: paymentId },
+      include: { subscription: true }
+    });
+
+    if (!payment) {
+      throw new Error('Payment not found');
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      // Update payment status
+      await tx.subscriptionPayment.update({
+        where: { id: paymentId },
+        data: {
+          status: 'PAID',
+          paidAt: new Date()
+        }
+      });
+
+      // Activate subscription
+      const updatedSubscription = await tx.userSubscription.update({
+        where: { id: payment.subscriptionId },
+        data: {
+          status: 'ACTIVE',
+          paymentStatus: 'PAID'
+        },
+        include: {
+          plan: true,
+          user: {
+            select: {
+              id: true,
+              email: true,
+              firstName: true,
+              lastName: true
+            }
+          }
+        }
+      });
+
+      return updatedSubscription;
+    });
+
+    return {
+      ...result,
+      features: JSON.parse(result.plan.features || '[]')
+    };
+  }
+
+  // Get user's trial status
+  async getUserTrialStatus(userId) {
+    const trialUsage = await prisma.trialUsage.findFirst({
+      where: {
+        userId,
+        planType: 'FREE'
+      }
+    });
+
+    if (!trialUsage) {
+      return { hasUsedTrial: false, trialExpired: false, daysRemaining: null };
+    }
+
+    const trialEndDate = new Date(trialUsage.usedAt.getTime() + 14 * 24 * 60 * 60 * 1000);
+    const now = new Date();
+    const trialExpired = now > trialEndDate;
+    const daysRemaining = Math.max(0, Math.ceil((trialEndDate - now) / (1000 * 60 * 60 * 24)));
+
+    return {
+      hasUsedTrial: true,
+      trialExpired,
+      daysRemaining: trialExpired ? 0 : daysRemaining,
+      trialStartDate: trialUsage.usedAt,
+      trialEndDate
+    };
   }
 }
 

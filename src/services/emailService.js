@@ -228,6 +228,118 @@ class EmailService {
     return this.sendMail(email, `Transaction ${transaction.type} - Spend`, html);
   }
 
+  // Add the sendWelcomeEmail method for subscription controller
+  async sendWelcomeEmail({ email, userName, planName, subscription }) {
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #4F46E5;">Welcome to Spend!</h2>
+        <p>Hi ${userName},</p>
+        <p>Thank you for subscribing to <strong>${planName}</strong>!</p>
+        <p>Your subscription has been successfully created and is now active.</p>
+        
+        <div style="background: #F3F4F6; padding: 20px; border-radius: 6px; margin: 20px 0;">
+          <h3 style="color: #4F46E5; margin-top: 0;">Subscription Details:</h3>
+          <p><strong>Plan:</strong> ${planName}</p>
+          <p><strong>Status:</strong> ${subscription.status}</p>
+          <p><strong>Start Date:</strong> ${new Date(subscription.startDate).toLocaleDateString()}</p>
+          <p><strong>Next Billing:</strong> ${new Date(subscription.nextBillingDate).toLocaleDateString()}</p>
+        </div>
+        
+        <p>You now have access to all the features included in your plan. If you have any questions, please don't hesitate to contact our support team.</p>
+        
+        <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 30px 0;">
+        <p style="color: #6B7280; font-size: 14px;">
+          Best regards,<br>
+          The Spend Team
+        </p>
+      </div>
+    `;
+    
+    return this.sendMail(email, `Welcome to ${planName} - Spend`, html);
+  }
+
+  // Add missing email methods for cronService
+  async sendSubscriptionExpiredEmail({ email, userName, planName, expiredAt }) {
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #DC2626;">Subscription Expired</h2>
+        <p>Hi ${userName},</p>
+        <p>Your <strong>${planName}</strong> subscription has expired on ${new Date(expiredAt).toLocaleDateString()}.</p>
+        
+        <div style="background: #FEF2F2; padding: 20px; border-radius: 6px; margin: 20px 0; border-left: 4px solid #DC2626;">
+          <h3 style="color: #DC2626; margin-top: 0;">What this means:</h3>
+          <p>• You no longer have access to premium features</p>
+          <p>• Your data is still safe and accessible</p>
+          <p>• You can reactivate your subscription anytime</p>
+        </div>
+        
+        <p>To continue enjoying all features, please renew your subscription.</p>
+        
+        <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 30px 0;">
+        <p style="color: #6B7280; font-size: 14px;">
+          Best regards,<br>
+          The Spend Team
+        </p>
+      </div>
+    `;
+    
+    return this.sendMail(email, `Subscription Expired - ${planName}`, html);
+  }
+
+  async sendRenewalReminderEmail({ email, userName, planName, daysRemaining, expiryDate }) {
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #F59E0B;">Subscription Renewal Reminder</h2>
+        <p>Hi ${userName},</p>
+        <p>Your <strong>${planName}</strong> subscription will expire in <strong>${daysRemaining} days</strong> on ${new Date(expiryDate).toLocaleDateString()}.</p>
+        
+        <div style="background: #FFFBEB; padding: 20px; border-radius: 6px; margin: 20px 0; border-left: 4px solid #F59E0B;">
+          <h3 style="color: #F59E0B; margin-top: 0;">Don't lose access to:</h3>
+          <p>• Premium features and tools</p>
+          <p>• Advanced analytics</p>
+          <p>• Priority support</p>
+        </div>
+        
+        <p>Renew now to continue enjoying uninterrupted service!</p>
+        
+        <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 30px 0;">
+        <p style="color: #6B7280; font-size: 14px;">
+          Best regards,<br>
+          The Spend Team
+        </p>
+      </div>
+    `;
+    
+    return this.sendMail(email, `Renewal Reminder - ${planName} expires in ${daysRemaining} days`, html);
+  }
+
+  async sendTrialExpiredEmail({ email, userName, planName }) {
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #DC2626;">Trial Period Ended</h2>
+        <p>Hi ${userName},</p>
+        <p>Your free trial for <strong>${planName}</strong> has ended.</p>
+        
+        <div style="background: #FEF2F2; padding: 20px; border-radius: 6px; margin: 20px 0; border-left: 4px solid #DC2626;">
+          <h3 style="color: #DC2626; margin-top: 0;">What happens next:</h3>
+          <p>• Your trial access has been suspended</p>
+          <p>• Your data is preserved</p>
+          <p>• Choose a plan to continue using our services</p>
+        </div>
+        
+        <p>Upgrade to a paid plan to unlock all features and continue your journey with Spend!</p>
+        
+        <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 30px 0;">
+        <p style="color: #6B7280; font-size: 14px;">
+          Best regards,<br>
+          The Spend Team
+        </p>
+      </div>
+    `;
+    
+    return this.sendMail(email, `Trial Ended - ${planName}`, html);
+  }
+
   // 
   // Replace the sendWelcomeEmailWithCredentials method with this corrected version:
 

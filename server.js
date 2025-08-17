@@ -27,6 +27,9 @@ const subscriptionRoute=require("./src/routes/subscriptionRoute")
 const errorHandler = require('./src/middleware/errorHandler');
 const { generalLimiter } = require('./src/middleware/rateLimiter');
 
+// Import cron service
+const CronService = require('./src/services/cronServices');
+
 const app = express();
 const PORT = process.env.PORT || 5000;
 
@@ -78,15 +81,20 @@ app.use('*', (req, res) => {
 // Error handling middleware
 app.use(errorHandler);
 
+// Initialize cron service
+const cronService = new CronService();
+
 // Graceful shutdown
 process.on('SIGTERM', async () => {
   console.log('SIGTERM received, shutting down gracefully');
+  cronService.stop();
   await prisma.$disconnect();
   process.exit(0);
 });
 
 process.on('SIGINT', async () => {
   console.log('SIGINT received, shutting down gracefully');
+  cronService.stop();
   await prisma.$disconnect();
   process.exit(0);
 });
@@ -96,6 +104,9 @@ const startServer = async () => {
   try {
     await prisma.$connect();
     console.log('Database connected successfully');
+    
+    // Start cron service
+    cronService.start();
     
     app.listen(PORT, () => {
       console.log(`Server running on port ${PORT} in ${process.env.NODE_ENV} mode`);
