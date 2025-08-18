@@ -9,6 +9,7 @@ const crypto = require('crypto');
 const prisma = new PrismaClient();
 const emailService = require('../services/emailService');
 const { AppError } = require('../utils/errors');
+const { calculateEndDate } = require('../utils/helpers');
 
 // Helper functions outside the class to avoid 'this' context issues
 const generateAccessToken = (user) => {
@@ -322,252 +323,326 @@ class AuthController {
   }
 
   // Select plan (Step 3)
-  async selectPlan(req, res) {
-    try {
-      const { userId, planId, billingPeriod = 'monthly' } = req.body;
+  // async selectPlan(req, res) {
+  //   try {
+  //     const { userId, planId, billingPeriod = 'monthly' } = req.body;
   
-      console.log('selectPlan called with:', { userId, planId, billingPeriod });
+  //     console.log('selectPlan called with:', { userId, planId, billingPeriod });
   
-      const user = await prisma.user.findUnique({ where: { id: userId } });
-      if (!user) throw new AppError("User not found", 404);
-      if (!user.isEmailVerified) throw new AppError("Email must be verified first", 400);
+  //     const user = await prisma.user.findUnique({ where: { id: userId } });
+  //     if (!user) throw new AppError("User not found", 404);
+  //     if (!user.isEmailVerified) throw new AppError("Email must be verified first", 400);
   
-      console.log('User found:', user.email);
+  //     console.log('User found:', user.email);
   
-      const plan = await prisma.subscriptionPlan.findUnique({ where: { id: planId } });
-      console.log('Plan query result:', plan);
+  //     const plan = await prisma.subscriptionPlan.findUnique({ where: { id: planId } });
+  //     console.log('Plan query result:', plan);
       
-      if (!plan) throw new AppError("Plan not found", 404);
+  //     if (!plan) throw new AppError("Plan not found", 404);
   
-      console.log("Found plan:", plan);
+  //     console.log("Found plan:", plan);
   
-      const price = billingPeriod === 'yearly' ? plan.yearlyPrice : plan.monthlyPrice;
+  //     const price = billingPeriod === 'yearly' ? plan.yearlyPrice : plan.monthlyPrice;
   
-      const finalPassword = generateRandomPassword();
-      const hashedPassword = await bcrypt.hash(finalPassword, parseInt(process.env.BCRYPT_ROUNDS));
+  //     const finalPassword = generateRandomPassword();
+  //     const hashedPassword = await bcrypt.hash(finalPassword, parseInt(process.env.BCRYPT_ROUNDS));
   
-      // Update user with final password and plan type
-      const updatedUser = await prisma.user.update({
-        where: { id: userId },
-        data: { 
-          password: hashedPassword,
-          status: "ACTIVE",
-          planType: plan.type.toUpperCase(),
-          subscriptionStatus: plan.type === "FREE" ? "TRIAL" : "PENDING"
-        }
-      });
+  //     // Update user with final password and plan type
+  //     const updatedUser = await prisma.user.update({
+  //       where: { id: userId },
+  //       data: { 
+  //         password: hashedPassword,
+  //         status: "ACTIVE",
+  //         planType: plan.type.toUpperCase(),
+  //         subscriptionStatus: plan.type === "FREE" ? "TRIAL" : "PENDING"
+  //       }
+  //     });
   
-      // ✅ FIXED: Proper end date calculation
-      let endDate;
-      if (plan.type === "FREE") {
-        // Free plan: 14 days trial from now
-        endDate = new Date(Date.now() + (plan.trialDays || 14) * 24 * 60 * 60 * 1000);
-      } else {
-        // Paid plans: proper billing cycle
-        endDate = billingPeriod === 'yearly' 
-          ? new Date(Date.now() + 365 * 24 * 60 * 60 * 1000) // 1 year from now
-          : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days from now
+  //     // ✅ FIXED: Proper end date calculation
+  //     let endDate;
+  //     if (plan.type === "FREE") {
+  //       // Free plan: 14 days trial from now
+  //       endDate = new Date(Date.now() + (plan.trialDays || 14) * 24 * 60 * 60 * 1000);
+  //     } else {
+  //       // Paid plans: proper billing cycle
+  //       endDate = billingPeriod === 'yearly' 
+  //         ? new Date(Date.now() + 365 * 24 * 60 * 60 * 1000) // 1 year from now
+  //         : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days from now
+  //     }
+  
+  //     // Create user subscription with correct end date
+  //     const subscriptionData = await prisma.userSubscription.create({
+  //       data: {
+  //         userId: userId,
+  //         planId: planId,
+  //         status: plan.type === "FREE" ? "TRIAL" : "PENDING_PAYMENT",
+  //         startDate: new Date(),
+  //         endDate: endDate, // ✅ Now using correct calculation
+  //         billingCycle: billingPeriod.toUpperCase(),
+  //         priceAtPurchase: price,
+  //         paymentStatus: plan.type === "FREE" ? "PAID" : "PENDING"
+  //       }
+  //     });
+  
+  //     // Rest of the method remains the same...
+  //     const payment = await prisma.payment.create({
+  //       data: {
+  //         userId,
+  //         subscriptionId: subscriptionData.id,
+  //         amount: price,
+  //         paymentStatus: plan.type === "FREE" ? "COMPLETED" : "PENDING",
+  //       }
+  //     });
+  
+  //     // Parse plan features
+  //     let planFeatures;
+  //     try {
+  //       planFeatures = JSON.parse(plan.features || "[]");
+  //     } catch (error) {
+  //       console.error("Error parsing plan features:", error);
+  //       planFeatures = [];
+  //     }
+  
+  //     const response = {
+  //       user: {
+  //         id: updatedUser.id,
+  //         email: updatedUser.email,
+  //         status: updatedUser.status,
+  //         planType: updatedUser.planType,
+  //         subscriptionStatus: updatedUser.subscriptionStatus
+  //       },
+  //       plan: {
+  //         id: plan.id,
+  //         name: plan.name,
+  //         displayName: plan.displayName,
+  //         type: plan.type,
+  //         price,
+  //         currency: plan.currency,
+  //         billingPeriod,
+  //         features: planFeatures
+  //       },
+  //       payment: {
+  //         id: payment.id,
+  //         amount: payment.amount,
+  //         status: payment.paymentStatus,
+  //       },
+  //       subscription: {
+  //         id: subscriptionData.id,
+  //         status: subscriptionData.status,
+  //         startDate: subscriptionData.startDate,
+  //         endDate: subscriptionData.endDate
+  //       },
+  //       nextStep: plan.type === "FREE" ? "login" : "payment"
+  //     };
+  
+  //     const emailSubscriptionData = {
+  //       ...subscriptionData,
+  //       plan: plan.displayName,
+  //       services: planFeatures,
+  //     };
+  
+  //     const transactionId = `TXN-${Date.now()}`;
+  
+  //     console.log("emailSubscriptionData:", emailSubscriptionData);
+  
+  //     await emailService.sendWelcomeEmailWithCredentials(
+  //       user.email,
+  //       finalPassword,
+  //       user.firstName,
+  //       user.lastName,
+  //       user.phone,
+  //       user.companyName,
+  //       emailSubscriptionData,
+  //       transactionId
+  //     );
+  
+  //     res.json({
+  //       success: true,
+  //       message: plan.type === "FREE" ? 
+  //         "Free plan activated successfully" : 
+  //         `Please complete your ${billingPeriod} payment`,
+  //       data: response
+  //     });
+  
+  //   } catch (err) {
+  //     console.error("Error in selectPlan:", err);
+  //     res.status(500).json({ 
+  //       success: false, 
+  //       message: "Failed to select plan" 
+  //     });
+  //   }
+  // }
+  async selectPlan(req, res) {
+  try {
+    const { userId, planId, billingCycle} = req.body;
+
+    console.log('selectPlan called with:', { userId, planId, billingCycle });
+
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new AppError("User not found", 404);
+    if (!user.isEmailVerified) throw new AppError("Email must be verified first", 400);
+
+    console.log('User found:', user.email);
+
+    const plan = await prisma.subscriptionPlan.findUnique({ where: { id: planId } });
+    console.log('Plan query result:', plan);
+    
+    if (!plan) throw new AppError("Plan not found", 404);
+
+    console.log("Found plan:", plan);
+
+    const price = billingCycle === 'yearly' ? plan.yearlyPrice : plan.monthlyPrice;
+
+    // ✅ Only generate password for FREE plans
+    let finalPassword = null;
+    let hashedPassword = null;
+    let shouldSendEmail = false;
+
+    if (plan.type === "FREE") {
+      finalPassword = generateRandomPassword();
+      hashedPassword = await bcrypt.hash(finalPassword, parseInt(process.env.BCRYPT_ROUNDS));
+      shouldSendEmail = true; // Send email immediately for free plans
+    }
+
+    // Update user with plan type (password only for free plans)
+    const updateData = {
+      status: plan.type === "FREE" ? "ACTIVE" : "PENDING", // Keep pending for paid plans
+      planType: plan.type.toUpperCase(),
+      subscriptionStatus: plan.type === "FREE" ? "TRIAL" : "PENDING"
+    };
+
+    // Only update password for free plans
+    if (plan.type === "FREE" && hashedPassword) {
+      updateData.password = hashedPassword;
+    }
+
+    const updatedUser = await prisma.user.update({
+      where: { id: userId },
+      data: updateData
+    });
+
+    // In selectPlan method - replace the existing end date calculation with this:
+const endDate = calculateEndDate(new Date(), billingCycle, plan.type, plan.trialDays);
+    console.log(`Creating new user subscription for userId=${userId}, planId=${planId}, billingCycle=${billingCycle}, endDate=${endDate}`);
+    // Create user subscription with correct end date
+    const subscriptionData = await prisma.userSubscription.create({
+      data: {
+        userId: userId,
+        planId: planId,
+        status: plan.type === "FREE" ? "TRIAL" : "PENDING_PAYMENT",
+        startDate: new Date(),
+        endDate: endDate,
+        billingCycle: billingCycle.toUpperCase(),
+        priceAtPurchase: price,
+        paymentStatus: plan.type === "FREE" ? "PAID" : "PENDING"
       }
-  
-      // Create user subscription with correct end date
-      const subscriptionData = await prisma.userSubscription.create({
-        data: {
-          userId: userId,
-          planId: planId,
-          status: plan.type === "FREE" ? "TRIAL" : "PENDING_PAYMENT",
-          startDate: new Date(),
-          endDate: endDate, // ✅ Now using correct calculation
-          billingCycle: billingPeriod.toUpperCase(),
-          priceAtPurchase: price,
-          paymentStatus: plan.type === "FREE" ? "PAID" : "PENDING"
-        }
-      });
-  
-      // Rest of the method remains the same...
-      const payment = await prisma.payment.create({
-        data: {
-          userId,
-          subscriptionId: subscriptionData.id,
-          amount: price,
-          paymentStatus: plan.type === "FREE" ? "COMPLETED" : "PENDING",
-        }
-      });
-  
-      // Parse plan features
-      let planFeatures;
-      try {
-        planFeatures = JSON.parse(plan.features || "[]");
-      } catch (error) {
-        console.error("Error parsing plan features:", error);
-        planFeatures = [];
+    });
+
+    // Create payment record
+    const payment = await prisma.payment.create({
+      data: {
+        userId,
+        subscriptionId: subscriptionData.id,
+        amount: price,
+        paymentStatus: plan.type === "FREE" ? "COMPLETED" : "PENDING",
       }
-  
-      const response = {
-        user: {
-          id: updatedUser.id,
-          email: updatedUser.email,
-          status: updatedUser.status,
-          planType: updatedUser.planType,
-          subscriptionStatus: updatedUser.subscriptionStatus
-        },
-        plan: {
-          id: plan.id,
-          name: plan.name,
-          displayName: plan.displayName,
-          type: plan.type,
-          price,
-          currency: plan.currency,
-          billingPeriod,
-          features: planFeatures
-        },
-        payment: {
-          id: payment.id,
-          amount: payment.amount,
-          status: payment.paymentStatus,
-        },
-        subscription: {
-          id: subscriptionData.id,
-          status: subscriptionData.status,
-          startDate: subscriptionData.startDate,
-          endDate: subscriptionData.endDate
-        },
-        nextStep: plan.type === "FREE" ? "login" : "payment"
-      };
-  
+    });
+
+    // Parse plan features
+    let planFeatures;
+    try {
+      planFeatures = JSON.parse(plan.features || "[]");
+    } catch (error) {
+      console.error("Error parsing plan features:", error);
+      planFeatures = [];
+    }
+
+    const response = {
+      user: {
+        id: updatedUser.id,
+        email: updatedUser.email,
+        status: updatedUser.status,
+        planType: updatedUser.planType,
+        subscriptionStatus: updatedUser.subscriptionStatus
+      },
+      plan: {
+        id: plan.id,
+        name: plan.name,
+        displayName: plan.displayName,
+        type: plan.type,
+        price,
+        currency: plan.currency,
+        billingCycle,
+        features: planFeatures
+      },
+      payment: {
+        id: payment.id,
+        amount: payment.amount,
+        status: payment.paymentStatus,
+      },
+      subscription: {
+        id: subscriptionData.id,
+        status: subscriptionData.status,
+        startDate: subscriptionData.startDate,
+        endDate: subscriptionData.endDate
+      },
+      nextStep: plan.type === "FREE" ? "login" : "checkout" // ✅ Changed to "checkout" for paid plans
+    };
+
+    // ✅ Only send email for FREE plans
+    if (shouldSendEmail && finalPassword) {
       const emailSubscriptionData = {
         ...subscriptionData,
         plan: plan.displayName,
         services: planFeatures,
       };
-  
+
       const transactionId = `TXN-${Date.now()}`;
-  
-      console.log("emailSubscriptionData:", emailSubscriptionData);
-  
-      await emailService.sendWelcomeEmailWithCredentials(
-        user.email,
-        finalPassword,
-        user.firstName,
-        user.lastName,
-        user.phone,
-        user.companyName,
-        emailSubscriptionData,
-        transactionId
-      );
-  
-      res.json({
-        success: true,
-        message: plan.type === "FREE" ? 
-          "Free plan activated successfully" : 
-          `Please complete your ${billingPeriod} payment`,
-        data: response
-      });
-  
-    } catch (err) {
-      console.error("Error in selectPlan:", err);
-      res.status(500).json({ 
-        success: false, 
-        message: "Failed to select plan" 
+
+      console.log("Sending email for FREE plan:", emailSubscriptionData);
+
+      try {
+        await emailService.sendWelcomeEmailWithCredentials(
+          user.email,
+          finalPassword,
+          user.firstName,
+          user.lastName,
+          user.phone,
+          user.companyName,
+          emailSubscriptionData,
+          transactionId
+        );
+      } catch (emailError) {
+        console.error("Failed to send welcome email:", emailError);
+        // Don't fail the entire process if email fails
+      }
+    }
+
+    res.json({
+      success: true,
+      message: plan.type === "FREE" 
+        ? "Free plan activated successfully! Check your email for login credentials." 
+        : `Please proceed to checkout to complete your ${billingCycle} payment`,
+      data: response
+    });
+
+  } catch (err) {
+    console.error("Error in selectPlan:", err);
+    
+    if (err instanceof AppError) {
+      return res.status(err.statusCode).json({
+        success: false,
+        message: err.message
       });
     }
+
+    res.status(500).json({ 
+      success: false, 
+      message: "Failed to select plan" 
+    });
   }
-  
-  // Updated login method with real plan details
-  // async login(req, res) {
-  //   const errors = validationResult(req);
-  //   if (!errors.isEmpty()) {
-  //     throw new AppError('Validation failed', 400, errors.array());
-  //   }
+}
 
-  //   const { email, password } = req.body;
-
-  //   // Find user with subscription details
-  //   const user = await prisma.user.findUnique({
-  //     where: { email },
-  //     include: {
-  //       accounts: {
-  //         where: { isDefault: true },
-  //         take: 1
-  //       },
-  //       userSubscriptions: {
-  //         where: {
-  //           OR: [
-  //             { status: 'ACTIVE' },
-  //             { status: 'TRIAL' },
-  //             { status: 'PENDING_PAYMENT' }
-  //           ]
-  //         },
-  //         include: {
-  //           plan: true
-  //         },
-  //         orderBy: {
-  //           createdAt: 'desc'
-  //         },
-  //         take: 1
-  //       },
-  //       payments: {
-  //         where: {
-  //           paymentStatus: 'COMPLETED'
-  //         },
-  //         include: {
-  //           subscription: true
-  //         },
-  //         orderBy: {
-  //           createdAt: 'desc'
-  //         },
-  //         take: 1
-  //       }
-  //     }
-  //   });
-
-  //   if (!user) {
-  //     throw new AppError('Invalid credentials', 401);
-  //   }
-
-  //   // Check if user has completed the full registration process
-  //   if (user.status === 'PENDING') {
-  //     throw new AppError('Please complete your registration by verifying your email and selecting a plan', 400);
-  //   }
-
-  //   // Check password
-  //   const isValidPassword = await bcrypt.compare(password, user.password);
-  //   if (!isValidPassword) {
-  //     throw new AppError('Invalid credentials', 401);
-  //   }
-
-  //   // Check account status
-  //   if (user.status === 'SUSPENDED') {
-  //     throw new AppError('Account suspended. Please contact support.', 403);
-  //   }
-
-  //   // Update last login
-  //   await prisma.user.update({
-  //     where: { id: user.id },
-  //     data: { lastLogin: new Date() }
-  //   });
-
-  //   // Generate tokens
-  //   const accessToken = generateAccessToken(user);
-  //   const refreshToken = generateRefreshToken(user);
-
-  //   // Get real plan details
-  //   const planDetails = await getRealUserPlanDetails(user);
-
-  //   // Remove sensitive data
-  //   const { password: _, verificationCode, resetToken, resetTokenExpiry, ...userResponse } = user;
-
-  //   res.json({
-  //     success: true,
-  //     message: 'Login successful',
-  //     data: {
-  //       user: userResponse,
-  //       plan: planDetails,
-  //       accessToken,
-  //       refreshToken
-  //     }
-  //   });
-  // }
-  // Updated login method with correct Prisma relations
 async login(req, res) {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -740,7 +815,7 @@ async getPlans(req, res) {
   }
 }
 
-// Get Plans for a Specific User
+// 3. Enhanced getPlansByUserId with real-time calculation (as backup)
 async getPlansByUserId(req, res) {
   try {
     const { userId } = req.params;
@@ -748,7 +823,6 @@ async getPlansByUserId(req, res) {
       return res.status(400).json({ success: false, message: "User ID is required" });
     }
 
-    // First, verify the user exists
     const user = await prisma.user.findUnique({
       where: { id: userId }
     });
@@ -757,7 +831,6 @@ async getPlansByUserId(req, res) {
       return res.status(404).json({ success: false, message: "User not found" });
     }
 
-    // Get user subscriptions with plan details and payments
     const userSubscriptions = await prisma.userSubscription.findMany({
       where: { userId },
       include: {
@@ -782,16 +855,14 @@ async getPlansByUserId(req, res) {
     const formatted = userSubscriptions.map(subscription => {
       const plan = subscription.plan;
       
-      // Get the latest payment for this subscription
       const latestPayment = subscription.payments && subscription.payments.length > 0 
         ? subscription.payments[0] 
         : null;
 
-      // Determine billing cycle based on subscription data or payment amount
       let billingCycle = subscription.billingCycle ? subscription.billingCycle.toLowerCase() : 'monthly';
       let price = subscription.priceAtPurchase;
 
-      // If we have payment data, use it to determine billing cycle
+      // Determine correct billing cycle from payment
       if (latestPayment) {
         const monthlyPrice = Number(plan.monthlyPrice);
         const yearlyPrice = Number(plan.yearlyPrice);
@@ -806,10 +877,32 @@ async getPlansByUserId(req, res) {
         }
       }
 
-      // Handle free plans
       if (plan.type === "FREE") {
         billingCycle = "trial";
         price = 0;
+      }
+
+      // ✅ Calculate correct end date in real-time as backup
+      let displayEndDate = subscription.endDate;
+      try {
+        const correctEndDate = calculateEndDate(
+          subscription.startDate,
+          billingCycle.toUpperCase(),
+          plan.type,
+          plan.trialDays
+        );
+        
+        // Use calculated date if it's significantly different from stored date
+        const timeDiff = Math.abs(new Date(displayEndDate).getTime() - correctEndDate.getTime());
+        const daysDiff = timeDiff / (1000 * 60 * 60 * 24);
+        
+        if (daysDiff > 1) {
+          console.log(`Using calculated end date for subscription ${subscription.id}`);
+          displayEndDate = correctEndDate;
+        }
+      } catch (error) {
+        console.error('Error calculating end date:', error);
+        // Fall back to stored date
       }
 
       return {
@@ -828,14 +921,12 @@ async getPlansByUserId(req, res) {
         maxUsers: plan.maxUsers,
         popular: plan.name === "member",
         
-        // Subscription details
         subscriptionStatus: subscription.status,
         startDate: subscription.startDate,
-        endDate: subscription.endDate,
+        endDate: displayEndDate, // ✅ Use corrected end date
         autoRenewal: subscription.autoRenewal,
         paymentStatus: subscription.paymentStatus,
         
-        // Payment details (if available)
         latestPayment: latestPayment ? {
           id: latestPayment.id,
           amount: Number(latestPayment.amount),
@@ -844,13 +935,11 @@ async getPlansByUserId(req, res) {
           createdAt: latestPayment.createdAt
         } : null,
         
-        // Dates
         subscriptionCreatedAt: subscription.createdAt,
         subscriptionUpdatedAt: subscription.updatedAt
       };
     });
 
-    // Remove duplicates by keeping only the latest subscription for each plan
     const uniquePlans = formatted.reduce((acc, current) => {
       const existing = acc.find(p => p.planId === current.planId);
       if (!existing || new Date(current.subscriptionCreatedAt) > new Date(existing.subscriptionCreatedAt)) {
@@ -879,7 +968,6 @@ async getPlansByUserId(req, res) {
     });
   }
 }
-
   // Update subscription with payment proof
   async updateSubscription(req, res) {
     try {
@@ -936,16 +1024,8 @@ async getPlansByUserId(req, res) {
       // If no existing subscription, create one
       if (!userSubscription) {
         const billingCycleUpper = billingCycle ? billingCycle.toUpperCase() : 'MONTHLY';
-        let endDate;
-        if (subscriptionPlan.type === 'FREE') {
-          // Free plan: 14 days trial from now
-          endDate = new Date(Date.now() + (subscriptionPlan.trialDays || 14) * 24 * 60 * 60 * 1000);
-        } else {
-          // Paid plans: proper billing cycle
-          endDate = billingCycleUpper === 'YEARLY' 
-            ? new Date(Date.now() + 365 * 24 * 60 * 60 * 1000) // 1 year from now
-            : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days from now
-        }
+        const endDate = calculateEndDate(new Date(), billingCycleUpper, subscriptionPlan.type, subscriptionPlan.trialDays);
+        console.log(`Creating new user subscription for userId=${userId}, planId=${subscriptionId}, billingCycle=${billingCycleUpper}, endDate=${endDate}`);
   
   
         userSubscription = await prisma.userSubscription.create({

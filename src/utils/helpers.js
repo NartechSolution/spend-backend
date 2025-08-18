@@ -10,6 +10,32 @@ class Helpers {
     return `TXN${timestamp}${random}`;
   }
 
+  static    calculateEndDate (startDate, billingCycle, planType, trialDays = 14)  {
+  const baseDate = startDate ? new Date(startDate) : new Date();
+  
+  if (planType === 'FREE') {
+    // Free plan: trial period from start date
+    return new Date(baseDate.getTime() + trialDays * 24 * 60 * 60 * 1000);
+  }
+  
+  const endDate = new Date(baseDate);
+  
+  if (billingCycle === 'yearly' || billingCycle === 'YEARLY') {
+    // Add 1 full year
+    endDate.setFullYear(baseDate.getFullYear() + 1);
+  } else {
+    // Add 1 month (monthly billing)
+    endDate.setMonth(baseDate.getMonth() + 1);
+    
+    // Handle month overflow (e.g., Jan 31 -> Feb 28/29)
+    if (endDate.getMonth() !== (baseDate.getMonth() + 1) % 12) {
+      endDate.setDate(0); // Set to last day of previous month
+    }
+  }
+  
+  return endDate;
+};
+
   // Generate account number
   static generateAccountNumber() {
     const timestamp = Date.now().toString();

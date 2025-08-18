@@ -3,6 +3,8 @@ const { PrismaClient } = require('@prisma/client');
 const { validationResult } = require('express-validator');
 const bcrypt = require('bcryptjs');
 const { AppError } = require('../utils/errors');
+const crypto = require('crypto');
+const emailService = require('../services/emailService');
 
 const prisma = new PrismaClient();
 
@@ -19,6 +21,178 @@ class UserController {
     this.getUserStatistics = this.getUserStatistics.bind(this);
     this.maskCardNumber = this.maskCardNumber.bind(this);
   }
+
+  // src/controllers/userController.js - Add this method to the UserController class
+
+// Admin create user (Add this method to your existing UserController class)
+async createUser(req, res) {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    throw new AppError('Validation failed', 400, errors.array());
+  }
+
+  const {
+    email,
+    firstName,
+    lastName,
+    phone,
+    companyName,
+    jobTitle,
+    companyIndustry,
+    companySize,
+    role = 'MEMBER',
+    status = 'ACTIVE',
+    planId,
+    billingCycle = 'monthly',
+    sendCredentials = true
+  } = req.body;
+
+  // Check if user already exists
+  const existingUser = await prisma.user.findUnique({
+    where: { email }
+  });
+
+  if (existingUser) {
+    throw new AppError('User already exists with this email', 409);
+  }
+
+  // Generate random password
+  const tempPassword = crypto.randomBytes(8).toString('hex');
+  const hashedPassword = await bcrypt.hash(tempPassword, parseInt(process.env.BCRYPT_ROUNDS));
+
+  try {
+    // Start transaction
+    const result = await prisma.$transaction(async (tx) => {
+      // Create user
+      const user = await tx.user.create({
+        data: {
+          email,
+          password: hashedPassword,
+          firstName,
+          lastName,
+          phone,
+          companyName,
+          jobTitle,
+          companyIndustry,
+          companySize,
+          role,
+          status,
+          isEmailVerified: true, // Admin created users are pre-verified
+          planType: 'FREE', // Default, will be updated if plan is provided
+          subscriptionStatus: 'ACTIVE'
+        }
+      });
+
+      let subscriptionData = null;
+      let planDetails = null;
+
+      // If plan is provided, create subscription
+      if (planId) {
+        const plan = await tx.subscriptionPlan.findUnique({
+          where: { id: planId }
+        });
+
+        if (!plan) {
+          throw new AppError('Selected plan not found', 404);
+        }
+
+        const price = billingCycle === 'yearly' ? plan.yearlyPrice : plan.monthlyPrice;
+        
+        // Calculate end date using the helper function
+        const { calculateEndDate } = require('../utils/helpers');
+        const endDate = calculateEndDate(new Date(), billingCycle.toUpperCase(), plan.type, plan.trialDays);
+
+        // Create subscription
+        subscriptionData = await tx.userSubscription.create({
+          data: {
+            userId: user.id,
+            planId: planId,
+            status: plan.type === 'FREE' ? 'TRIAL' : 'ACTIVE',
+            startDate: new Date(),
+            endDate: endDate,
+            billingCycle: billingCycle.toUpperCase(),
+            priceAtPurchase: price,
+            paymentStatus: plan.type === 'FREE' ? 'PAID' : 'PAID' // Admin created, assume paid
+          }
+        });
+
+        // Create payment record
+        await tx.payment.create({
+          data: {
+            userId: user.id,
+            subscriptionId: subscriptionData.id,
+            amount: price,
+            paymentStatus: 'COMPLETED' // Admin created, mark as completed
+          }
+        });
+
+        // Update user with plan type
+        await tx.user.update({
+          where: { id: user.id },
+          data: {
+            planType: plan.type.toUpperCase(),
+            subscriptionStatus: plan.type === 'FREE' ? 'TRIAL' : 'ACTIVE'
+          }
+        });
+
+        planDetails = plan;
+      }
+
+      return { user, subscriptionData, planDetails };
+    });
+
+    // Send welcome email with credentials if requested
+    if (sendCredentials) {
+      try {
+        const emailSubscriptionData = result.subscriptionData ? {
+          ...result.subscriptionData,
+          plan: result.planDetails?.displayName || 'Free Plan',
+          services: JSON.parse(result.planDetails?.features || '[]')
+        } : null;
+
+        const transactionId = `TXN-ADMIN-${Date.now()}`;
+
+        await emailService.sendWelcomeEmailWithCredentials(
+          email,
+          tempPassword,
+          firstName,
+          lastName,
+          phone,
+          companyName,
+          emailSubscriptionData,
+          transactionId
+        );
+      } catch (emailError) {
+        console.error('Failed to send welcome email:', emailError);
+        // Don't fail the user creation if email fails
+      }
+    }
+
+    // Remove sensitive data from response
+    const { password, ...userResponse } = result.user;
+
+    res.status(201).json({
+      success: true,
+      message: 'User created successfully',
+      data: {
+        user: userResponse,
+        subscription: result.subscriptionData,
+        plan: result.planDetails,
+        temporaryPassword: sendCredentials ? null : tempPassword, // Only return if not sending email
+        emailSent: sendCredentials
+      }
+    });
+
+  } catch (error) {
+    console.error('Error creating user:', error);
+    
+    if (error instanceof AppError) {
+      throw error;
+    }
+    
+    throw new AppError('Failed to create user', 500);
+  }
+}
 
 
   // Get current user profile

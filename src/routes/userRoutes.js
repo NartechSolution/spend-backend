@@ -26,6 +26,9 @@ router.post('/approve-payment', adminMiddleware, userController.approvePayment);
 router.post('/decline-payment', adminMiddleware, userController.declinePayment);
 
 // Parameterized routes (these should come LAST)
+
+// creared by admin
+router.post('/', adminMiddleware, userController.createUser);
 router.get('/', adminMiddleware, userController.getAllUsers);
 router.get('/:id', adminMiddleware, userController.getUserById);
 router.patch('/:id/status', adminMiddleware, userController.updateUserStatus);

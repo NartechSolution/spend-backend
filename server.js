@@ -21,7 +21,8 @@ const loanRoutes = require('./src/routes/loanRoutes');
 const investmentRoutes = require('./src/routes/investmentRoutes');
 const invoiceRoutes = require('./src/routes/invoiceRoutes');
 const dashboardRoutes = require('./src/routes/dashboardRoutes');
-const subscriptionRoute=require("./src/routes/subscriptionRoute")
+const subscriptionRoute = require("./src/routes/subscriptionRoute")
+const checkoutRoute = require('./src/routes/checkoutRoute');
 
 // Import middleware
 const errorHandler = require('./src/middleware/errorHandler');
@@ -68,7 +69,11 @@ app.use(`/api/${apiVersion}/loans`, loanRoutes);
 app.use(`/api/${apiVersion}/investments`, investmentRoutes);
 app.use(`/api/${apiVersion}/invoices`, invoiceRoutes);
 app.use(`/api/${apiVersion}/dashboard`, dashboardRoutes);
-app.use(`/api/${apiVersion}/subscriptions`,subscriptionRoute)
+app.use(`/api/${apiVersion}/subscriptions`, subscriptionRoute)
+// checkout routes
+
+app.use(`/api/${apiVersion}/checkout`, checkoutRoute);
+
 
 // 404 handler
 app.use('*', (req, res) => {
