@@ -12,19 +12,38 @@ model User {
   id               String              @id @default(uuid())
   email            String              @unique
   password         String
-  firstName        String
-  lastName         String
+  firstName        String?
+  lastName         String?
   phone            String?
   companyName      String?
   jobTitle         String?
   companyIndustry  String?
   companySize      String?
-  role             String              @default("MEMBER") // ADMIN, MEMBER, USER
-  status           String              @default("PENDING")
+  role             String?             @default("MEMBER") // ADMIN, MEMBER, USER
+  status           String?             @default("PENDING")
   isEmailVerified  Boolean             @default(false)
   isPhoneVerified  Boolean             @default(false)
   planType         String?             @default("FREE") // FREE, MEMBER, ADMIN
   subscriptionStatus String?           @default("TRIAL") // ACTIVE, EXPIRED, CANCELLED, TRIAL, PENDING
+
+
+
+  // Security Questions (new fields)
+  firstSchoolName  String?
+  petName          String?
+  birthPlace       String?
+  elderBrotherName String?
+  grandfatherName  String?
+  motherName       String?
+  
+  // PIN Code (new field)
+  pinCode          String?
+  
+  // Social Auth fields (new)
+  googleId         String?
+  facebookId       String?
+  authProvider     String?             // LOCAL, GOOGLE, FACEBOOK
+
 
   verificationCode String?
   resetToken       String?

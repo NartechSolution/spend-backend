@@ -859,23 +859,31 @@ async getPlansByUserId(req, res) {
         ? subscription.payments[0] 
         : null;
 
-      let billingCycle = subscription.billingCycle ? subscription.billingCycle.toLowerCase() : 'monthly';
-      let price = subscription.priceAtPurchase;
+     let billingCycle = subscription.billingCycle 
+  ? subscription.billingCycle.toLowerCase() 
+  : null;
+let price = subscription.priceAtPurchase;
 
-      // Determine correct billing cycle from payment
-      if (latestPayment) {
-        const monthlyPrice = Number(plan.monthlyPrice);
-        const yearlyPrice = Number(plan.yearlyPrice);
-        const paymentAmount = Number(latestPayment.amount);
-        
-        if (paymentAmount === yearlyPrice) {
-          billingCycle = "yearly";
-          price = yearlyPrice;
-        } else if (paymentAmount === monthlyPrice) {
-          billingCycle = "monthly";
-          price = monthlyPrice;
-        }
-      }
+// Prefer subscription.billingCycle over payment guess
+if (!billingCycle && latestPayment) {
+  const monthlyPrice = Number(plan.monthlyPrice);
+  const yearlyPrice = Number(plan.yearlyPrice);
+  const paymentAmount = Number(latestPayment.amount);
+
+  if (paymentAmount === yearlyPrice) {
+    billingCycle = "yearly";
+    price = yearlyPrice;
+  } else if (paymentAmount === monthlyPrice) {
+    billingCycle = "monthly";
+    price = monthlyPrice;
+  }
+}
+
+// Default fallback if still null
+if (!billingCycle) {
+  billingCycle = "monthly";
+}
+
 
       if (plan.type === "FREE") {
         billingCycle = "trial";
