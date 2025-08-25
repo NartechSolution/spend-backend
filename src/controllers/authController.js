@@ -770,6 +770,7 @@ async login(req, res) {
     }
   });
 }
+
 // Get all plans
 async getPlans(req, res) {
   try {

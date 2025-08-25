@@ -2,11 +2,15 @@
 const SubscriptionService = require('../services/subscriptionServices');
 const emailService = require('../services/emailService');
 const { validationResult } = require('express-validator');
+const ServiceService = require('../services/servicesService');
+const EnhancedSubscriptionService = require('../services/EnhanceSubscriptionService');
 
 class SubscriptionController {
   constructor() {
     this.subscriptionService = new SubscriptionService();
+    this.enhancedSubscriptionService = new EnhancedSubscriptionService(); // Create instance
     this.emailService = emailService;
+    this.serviceService = new ServiceService();
   }
 
   // Helper method for consistent error responses
@@ -46,18 +50,590 @@ class SubscriptionController {
   }
 
   // GET /api/subscriptions/plans - Get all subscription plans
-  async getPlans(req, res) {
+  
+// CONTROLLER METHOD
+async getPlans(req, res) {
+  try {
+    const { includeServices = 'false' } = req.query;
+    
+    console.log('Getting plans with includeServices:', includeServices);
+    
+    let plans;
+    if (includeServices === 'true') {
+      // Make sure you're calling the right service method
+      plans = await this.enhancedSubscriptionService.getAllActivePlansWithServices({ includeServices: true });
+    } else {
+      plans = await this.subscriptionService.getAllActivePlans();
+    }
+
+    // Debug: Log the raw response to see what's being returned
+    console.log('Plans response:', JSON.stringify(plans, null, 2));
+    
+    res.json({
+      success: true,
+      data: plans,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Get plans error:', error);
+    return this.sendErrorResponse(res, 500, 'Failed to fetch subscription plans', error);
+  }
+}
+  // GET /api/subscriptions/plans/:id/services - Get services for a specific plan
+  async getPlanServices(req, res) {
     try {
-      const plans = await this.subscriptionService.getAllActivePlans();
-      
+      const { id } = req.params;
+      const { includeInactive = 'false' } = req.query;
+
+      if (!id) {
+        return this.sendErrorResponse(res, 400, 'Plan ID is required');
+      }
+
+      const planServices = await this.enhancedSubscriptionService.getPlanServices(id, {
+        includeInactive: includeInactive === 'true'
+      });
+
+      if (!planServices) {
+        return this.sendErrorResponse(res, 404, 'Plan not found');
+      }
+
       res.json({
         success: true,
-        data: plans,
+        data: planServices,
         timestamp: new Date().toISOString()
       });
     } catch (error) {
-      console.error('Get plans error:', error);
-      return this.sendErrorResponse(res, 500, 'Failed to fetch subscription plans', error);
+      console.error('Get plan services error:', error);
+      return this.sendErrorResponse(res, 500, 'Failed to fetch plan services', error);
+    }
+  }
+  // getplanbyid
+  async getPlanById(req, res) {
+    try {
+      const { id } = req.params;
+      const { includeServices = 'false' } = req.query;
+
+      if (!id) {
+        return this.sendErrorResponse(res, 400, 'Plan ID is required');
+      }
+
+      let plan;
+      if (includeServices === 'true') {
+        plan = await this.enhancedSubscriptionService.getPlanById(id);
+      } else {
+        plan = await this.subscriptionService.getPlanById(id);
+      }
+
+      if (!plan) {
+        return this.sendErrorResponse(res, 404, 'Plan not found');
+      }
+
+      res.json({
+        success: true,
+        data: plan,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error('Get plan by ID error:', error);
+      return this.sendErrorResponse(res, 500, 'Failed to fetch plan', error);
+    }
+  }
+
+  // POST /api/subscriptions/plans/:id/services - Add services to a plan
+  async addServicesToPlan(req, res) {
+    try {
+      // Check admin role
+      if (req.user.role !== 'ADMIN') {
+        return this.sendErrorResponse(res, 403, 'Admin access required');
+      }
+
+      const validationError = this.validateRequest(req, res);
+      if (validationError) return validationError;
+
+      const { id } = req.params;
+      const { serviceIds } = req.body;
+
+      if (!id) {
+        return this.sendErrorResponse(res, 400, 'Plan ID is required');
+      }
+
+      if (!Array.isArray(serviceIds) || serviceIds.length === 0) {
+        return this.sendErrorResponse(res, 400, 'Service IDs array is required');
+      }
+
+      const result = await this.enhancedSubscriptionService.addServicesToPlan(id, serviceIds);
+
+      res.json({
+        success: true,
+        data: result,
+        message: `Added ${serviceIds.length} services to plan successfully`,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error('Add services to plan error:', error);
+      return this.sendErrorResponse(res, 500, error.message || 'Failed to add services to plan', error);
+    }
+  }
+
+  // DELETE /api/subscriptions/plans/:planId/services/:serviceId - Remove service from plan
+  async removeServiceFromPlan(req, res) {
+    try {
+      // Check admin role
+      if (req.user.role !== 'ADMIN') {
+        return this.sendErrorResponse(res, 403, 'Admin access required');
+      }
+
+      const { planId, serviceId } = req.params;
+
+      if (!planId || !serviceId) {
+        return this.sendErrorResponse(res, 400, 'Plan ID and Service ID are required');
+      }
+
+      await this.enhancedSubscriptionService.removeServiceFromPlan(planId, serviceId);
+
+      res.json({
+        success: true,
+        message: 'Service removed from plan successfully',
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error('Remove service from plan error:', error);
+      return this.sendErrorResponse(res, 500, error.message || 'Failed to remove service from plan', error);
+    }
+  }
+
+  // GET /api/subscriptions/:id/services - Get services for user's subscription
+  async getSubscriptionServices(req, res) {
+    try {
+      const { id } = req.params;
+      
+      if (!id) {
+        return this.sendErrorResponse(res, 400, 'Subscription ID is required');
+      }
+
+      // Get subscription to check authorization
+      const subscription = await this.subscriptionService.getSubscriptionById(id);
+      if (!subscription) {
+        return this.sendErrorResponse(res, 404, 'Subscription not found');
+      }
+
+      // Check authorization
+      if (!this.checkUserAuthorization(subscription, req.user.id, req.user.role)) {
+        return this.sendErrorResponse(res, 403, 'Access denied');
+      }
+
+      const subscriptionServices = await this.enhancedSubscriptionService.getSubscriptionServices(id);
+
+      res.json({
+        success: true,
+        data: subscriptionServices,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error('Get subscription services error:', error);
+      return this.sendErrorResponse(res, 500, 'Failed to fetch subscription services', error);
+    }
+  }
+
+  // POST /api/subscriptions/:id/services/manage - Add/Remove services from user subscription
+  async manageSubscriptionServices(req, res) {
+    try {
+      const validationError = this.validateRequest(req, res);
+      if (validationError) return validationError;
+
+      const { id } = req.params;
+      const { addServices = [], removeServices = [] } = req.body;
+
+      if (!id) {
+        return this.sendErrorResponse(res, 400, 'Subscription ID is required');
+      }
+
+      // Get subscription to check authorization
+      const subscription = await this.subscriptionService.getSubscriptionById(id);
+      if (!subscription) {
+        return this.sendErrorResponse(res, 404, 'Subscription not found');
+      }
+
+      // Check authorization
+      if (!this.checkUserAuthorization(subscription, req.user.id, req.user.role)) {
+        return this.sendErrorResponse(res, 403, 'Access denied');
+      }
+
+      const result = await this.enhancedSubscriptionService.manageSubscriptionServices(id, {
+        addServices,
+        removeServices,
+        updatedBy: req.user.id
+      });
+
+      res.json({
+        success: true,
+        data: result,
+        message: 'Subscription services updated successfully',
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error('Manage subscription services error:', error);
+      return this.sendErrorResponse(res, 500, error.message || 'Failed to manage subscription services', error);
+    }
+  }
+
+  // PLAN MANAGEMENT ENDPOINTS FOR ADMIN
+
+  // POST /api/subscriptions/admin/plans - Create new subscription plan
+  async createPlan(req, res) {
+    try {
+      // Check admin role
+      if (req.user.role !== 'ADMIN') {
+        return this.sendErrorResponse(res, 403, 'Admin access required');
+      }
+
+      const validationError = this.validateRequest(req, res);
+      if (validationError) return validationError;
+
+      const planData = {
+        ...req.body,
+        createdBy: req.user.id
+      };
+
+      const newPlan = await this.enhancedSubscriptionService.createPlan(planData);
+
+      res.status(201).json({
+        success: true,
+        data: newPlan,
+        message: 'Subscription plan created successfully',
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error('Create plan error:', error);
+      return this.sendErrorResponse(res, 500, error.message || 'Failed to create plan', error);
+    }
+  }
+
+  // PUT /api/subscriptions/admin/plans/:id - Update subscription plan
+  async updatePlan(req, res) {
+    try {
+      // Check admin role
+      if (req.user.role !== 'ADMIN') {
+        return this.sendErrorResponse(res, 403, 'Admin access required');
+      }
+
+      const validationError = this.validateRequest(req, res);
+      if (validationError) return validationError;
+
+      const { id } = req.params;
+      const updateData = {
+        ...req.body,
+        updatedBy: req.user.id
+      };
+
+      if (!id) {
+        return this.sendErrorResponse(res, 400, 'Plan ID is required');
+      }
+
+      const updatedPlan = await this.enhancedSubscriptionService.updatePlan(id, updateData);
+
+      res.json({
+        success: true,
+        data: updatedPlan,
+        message: 'Subscription plan updated successfully',
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error('Update plan error:', error);
+      return this.sendErrorResponse(res, 500, error.message || 'Failed to update plan', error);
+    }
+  }
+
+  // DELETE /api/subscriptions/admin/plans/:id - Delete subscription plan
+  async deletePlan(req, res) {
+    try {
+      // Check admin role
+      if (req.user.role !== 'ADMIN') {
+        return this.sendErrorResponse(res, 403, 'Admin access required');
+      }
+
+      const { id } = req.params;
+
+      if (!id) {
+        return this.sendErrorResponse(res, 400, 'Plan ID is required');
+      }
+
+      // Check if plan is in use
+      const isInUse = await this.enhancedSubscriptionService.isPlanInUse(id);
+      if (isInUse) {
+        return this.sendErrorResponse(res, 409, 'Cannot delete plan that has active subscriptions');
+      }
+
+      await this.enhancedSubscriptionService.deletePlan(id);
+
+      res.json({
+        success: true,
+        message: 'Subscription plan deleted successfully',
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error('Delete plan error:', error);
+      return this.sendErrorResponse(res, 500, error.message || 'Failed to delete plan', error);
+    }
+  }
+
+  // GET /api/subscriptions/admin/plans/:id/usage - Get plan usage statistics
+  async getPlanUsage(req, res) {
+    try {
+      // Check admin role
+      if (req.user.role !== 'ADMIN') {
+        return this.sendErrorResponse(res, 403, 'Admin access required');
+      }
+
+      const { id } = req.params;
+
+      if (!id) {
+        return this.sendErrorResponse(res, 400, 'Plan ID is required');
+      }
+
+      const usage = await this.enhancedSubscriptionService.getPlanUsage(id);
+
+      res.json({
+        success: true,
+        data: usage,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error('Get plan usage error:', error);
+      return this.sendErrorResponse(res, 500, 'Failed to fetch plan usage', error);
+    }
+  }
+
+  // SERVICE-SPECIFIC SUBSCRIPTION ENDPOINTS
+
+  // GET /api/subscriptions/available-services - Get available services for user's plan level
+  async getAvailableServices(req, res) {
+    try {
+      const userId = req.user.id;
+      const { planType } = req.query;
+
+      // If planType not provided, get from user's current subscription
+      let targetPlanType = planType;
+      if (!targetPlanType) {
+        const userSubscription = await this.subscriptionService.getUserActiveSubscription(userId);
+        if (userSubscription && userSubscription.plan) {
+          targetPlanType = userSubscription.plan.type;
+        } else {
+          targetPlanType = 'FREE'; // Default to free plan
+        }
+      }
+
+      const availableServices = await this.enhancedSubscriptionService.getAvailableServicesForPlanType(targetPlanType);
+
+      res.json({
+        success: true,
+        data: availableServices,
+        planType: targetPlanType,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error('Get available services error:', error);
+      return this.sendErrorResponse(res, 500, 'Failed to fetch available services', error);
+    }
+  }
+
+  // POST /api/subscriptions/request-service - Request additional service
+  async requestService(req, res) {
+    try {
+      const validationError = this.validateRequest(req, res);
+      if (validationError) return validationError;
+
+      const { serviceId, reason } = req.body;
+      const userId = req.user.id;
+
+      if (!serviceId) {
+        return this.sendErrorResponse(res, 400, 'Service ID is required');
+      }
+
+      // Get user's active subscription
+      const subscription = await this.subscriptionService.getUserActiveSubscription(userId);
+      if (!subscription) {
+        return this.sendErrorResponse(res, 404, 'No active subscription found');
+      }
+
+      const request = await this.enhancedSubscriptionService.createServiceRequest({
+        userId,
+        subscriptionId: subscription.id,
+        serviceId,
+        reason: reason || 'User requested additional service',
+        status: 'PENDING'
+      });
+
+      res.status(201).json({
+        success: true,
+        data: request,
+        message: 'Service request submitted successfully',
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error('Request service error:', error);
+      return this.sendErrorResponse(res, 500, 'Failed to submit service request', error);
+    }
+  }
+
+  // GET /api/subscriptions/my/service-requests - Get user's service requests
+  async getMyServiceRequests(req, res) {
+    try {
+      const userId = req.user.id;
+      const { status, page = 1, limit = 20 } = req.query;
+
+      const requests = await this.enhancedSubscriptionService.getUserServiceRequests(userId, {
+        status,
+        page: parseInt(page),
+        limit: parseInt(limit)
+      });
+
+      res.json({
+        success: true,
+        data: requests,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error('Get service requests error:', error);
+      return this.sendErrorResponse(res, 500, 'Failed to fetch service requests', error);
+    }
+  }
+
+  // ADMIN SERVICE REQUEST MANAGEMENT
+
+  // GET /api/subscriptions/admin/service-requests - Get all service requests
+  async getAllServiceRequests(req, res) {
+    try {
+      // Check admin role
+      if (req.user.role !== 'ADMIN') {
+        return this.sendErrorResponse(res, 403, 'Admin access required');
+      }
+
+      const { 
+        status, 
+        page = 1, 
+        limit = 20,
+        sortBy = 'createdAt',
+        sortOrder = 'desc'
+      } = req.query;
+
+      const requests = await this.enhancedSubscriptionService.getAllServiceRequests({
+        status,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        sortBy,
+        sortOrder
+      });
+
+      res.json({
+        success: true,
+        data: requests,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error('Get all service requests error:', error);
+      return this.sendErrorResponse(res, 500, 'Failed to fetch service requests', error);
+    }
+  }
+
+  // POST /api/subscriptions/admin/service-requests/:id/approve - Approve service request
+  async approveServiceRequest(req, res) {
+    try {
+      // Check admin role
+      if (req.user.role !== 'ADMIN') {
+        return this.sendErrorResponse(res, 403, 'Admin access required');
+      }
+
+      const { id } = req.params;
+      const { notes } = req.body;
+
+      if (!id) {
+        return this.sendErrorResponse(res, 400, 'Service request ID is required');
+      }
+
+      const approvedRequest = await this.enhancedSubscriptionService.approveServiceRequest(id, {
+        approvedBy: req.user.id,
+        adminNotes: notes
+      });
+
+      res.json({
+        success: true,
+        data: approvedRequest,
+        message: 'Service request approved successfully',
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error('Approve service request error:', error);
+      return this.sendErrorResponse(res, 500, error.message || 'Failed to approve service request', error);
+    }
+  }
+
+  // POST /api/subscriptions/admin/service-requests/:id/reject - Reject service request
+  async rejectServiceRequest(req, res) {
+    try {
+      // Check admin role
+      if (req.user.role !== 'ADMIN') {
+        return this.sendErrorResponse(res, 403, 'Admin access required');
+      }
+
+      const { id } = req.params;
+      const { reason } = req.body;
+
+      if (!id) {
+        return this.sendErrorResponse(res, 400, 'Service request ID is required');
+      }
+
+      const rejectedRequest = await this.enhancedSubscriptionService.rejectServiceRequest(id, {
+        rejectedBy: req.user.id,
+        rejectionReason: reason || 'Request denied by administrator'
+      });
+
+      res.json({
+        success: true,
+        data: rejectedRequest,
+        message: 'Service request rejected',
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error('Reject service request error:', error);
+      return this.sendErrorResponse(res, 500, error.message || 'Failed to reject service request', error);
+    }
+  }
+
+  // SUBSCRIPTION ANALYTICS WITH SERVICE DATA
+
+  // GET /api/subscriptions/admin/analytics/detailed - Get detailed analytics including services
+  async getDetailedAnalytics(req, res) {
+    try {
+      // Check admin role
+      if (req.user.role !== 'ADMIN') {
+        return this.sendErrorResponse(res, 403, 'Admin access required');
+      }
+
+      const { startDate, endDate } = req.query;
+      
+      const start = startDate ? new Date(startDate) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      const end = endDate ? new Date(endDate) : new Date();
+
+      if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+        return this.sendErrorResponse(res, 400, 'Invalid date format');
+      }
+
+      if (start > end) {
+        return this.sendErrorResponse(res, 400, 'Start date must be before end date');
+      }
+
+      const analytics = await this.enhancedSubscriptionService.getDetailedAnalytics(start, end);
+
+      res.json({
+        success: true,
+        data: analytics,
+        dateRange: { startDate: start, endDate: end },
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error('Detailed analytics error:', error);
+      return this.sendErrorResponse(res, 500, 'Failed to fetch detailed analytics', error);
     }
   }
 

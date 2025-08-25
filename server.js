@@ -24,6 +24,7 @@ const dashboardRoutes = require('./src/routes/dashboardRoutes');
 const subscriptionRoute = require("./src/routes/subscriptionRoute")
 const checkoutRoute = require('./src/routes/checkoutRoute');
 const appAuthRoute = require('./src/routes/appAuthRoute')
+const serviceRoute = require('./src/routes/servicesRoute')
 
 // Import middleware
 const errorHandler = require('./src/middleware/errorHandler');
@@ -72,6 +73,7 @@ app.use(`/api/${apiVersion}/invoices`, invoiceRoutes);
 app.use(`/api/${apiVersion}/dashboard`, dashboardRoutes);
 app.use(`/api/${apiVersion}/subscriptions`, subscriptionRoute)
 app.use(`/api/${apiVersion}/app-auth`, appAuthRoute);
+app.use(`/api/${apiVersion}/services`, serviceRoute);
 // checkout routes
 
 app.use(`/api/${apiVersion}/checkout`, checkoutRoute);
