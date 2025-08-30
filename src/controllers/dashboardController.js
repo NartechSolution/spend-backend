@@ -48,7 +48,7 @@ class DashboardController {
       where: { userId, status: 'ACTIVE' },
       select: {
         id: true, cardNumber: true, cardHolderName: true, expiryDate: true,
-        balance: true, cardType: true, bank: true, isDefault: true
+        balance: true, cardType: true, isDefault: true
       }
     });
 

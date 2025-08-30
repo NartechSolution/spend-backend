@@ -1,7 +1,7 @@
-
 const { PrismaClient } = require('@prisma/client');
 const { validationResult } = require('express-validator');
 const { AppError } = require('../utils/errors');
+const CardValidator = require('../utils/cardValidater');
 
 const prisma = new PrismaClient();
 
@@ -40,12 +40,11 @@ class CardController {
         expiryDate: true,
         cardType: true,
         cardForm: true,
-        cardNetwork: true,        // Added cardNetwork field
+        cardNetwork: true,
         currency: true,
         status: true,
         balance: true,
         creditLimit: true,
-        bank: true,
         isDefault: true,
         createdAt: true
       }
@@ -58,7 +57,7 @@ class CardController {
       data: {
         cards: cards.map(card => ({
           ...card,
-          cardNumber: card.cardNumber
+          cardNumber: CardValidator.maskCardNumber(card.cardNumber)
         })),
         statistics: cardStats
       }
@@ -98,14 +97,14 @@ class CardController {
       data: {
         card: {
           ...card,
-          cardNumber: card.cardNumber,
+          cardNumber: CardValidator.maskCardNumber(card.cardNumber),
           cvv: '***'
         }
       }
     });
   }
 
-  // Create new card with card network support
+  // Create new card with enhanced validation
   async createCard(req, res) {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -118,18 +117,46 @@ class CardController {
       cardNumber,
       expiryDate,
       cvv,
-      cardType,      // credit/debit
-      cardForm,      // PLASTIC or VIRTUAL
-      cardNetwork,   // VISA, MASTERCARD, MADA
-      bank,
+      cardType,
+      cardForm,
+      cardNetwork,
       creditLimit,
-      currency,      // SAR or USD     // selected program
+      currency
     } = req.body;
 
+    // Validate card number using Luhn algorithm
+    if (!CardValidator.validateCardNumber(cardNumber)) {
+      throw new AppError('Invalid card number. Please check the card number and try again.', 400);
+    }
+
+    // Auto-detect card network if not provided or validate if provided
+    const detectedNetwork = CardValidator.detectCardNetwork(cardNumber);
+    const finalCardNetwork = cardNetwork || detectedNetwork;
+
+    if (!finalCardNetwork) {
+      throw new AppError('Unable to determine card network. Please specify the card network.', 400);
+    }
+
+    // Validate provided network matches detected network
+    if (cardNetwork && detectedNetwork && cardNetwork !== detectedNetwork) {
+      throw new AppError(`Card network mismatch. Detected ${detectedNetwork} but provided ${cardNetwork}`, 400);
+    }
+
     // Validate card network
-    const validNetworks = ['VISA', 'MASTERCARD', 'MADA'];
-    if (!validNetworks.includes(cardNetwork)) {
-      throw new AppError('Invalid card network. Must be one of: VISA, MASTERCARD, MADA', 400);
+    const validNetworks = ['VISA', 'MASTERCARD', 'MADA', 'AMEX', 'DISCOVER'];
+    if (!validNetworks.includes(finalCardNetwork)) {
+      throw new AppError('Invalid card network. Must be one of: VISA, MASTERCARD, MADA, AMEX, DISCOVER', 400);
+    }
+
+    // Validate CVV based on card network
+    if (!CardValidator.validateCVV(cvv, finalCardNetwork)) {
+      const expectedLength = finalCardNetwork === 'AMEX' ? 4 : 3;
+      throw new AppError(`Invalid CVV. ${finalCardNetwork} cards require a ${expectedLength}-digit CVV.`, 400);
+    }
+
+    // Validate expiry date
+    if (!CardValidator.validateExpiryDate(expiryDate)) {
+      throw new AppError('Invalid or expired card expiry date.', 400);
     }
 
     // Validate card form
@@ -138,11 +165,23 @@ class CardController {
       throw new AppError('Invalid card form. Must be VIRTUAL or PHYSICAL', 400);
     }
 
+    // Check for duplicate card number
+    const existingCardNumber = await prisma.card.findFirst({
+      where: {
+        cardNumber,
+        status: { not: 'DELETED' }
+      }
+    });
+
+    if (existingCardNumber) {
+      throw new AppError('A card with this number already exists.', 400);
+    }
+
     // Check if user already has a card with this network and form combination
     const existingCard = await prisma.card.findFirst({
       where: {
         userId,
-        cardNetwork,
+        cardNetwork: finalCardNetwork,
         cardForm,
         status: { not: 'DELETED' }
       }
@@ -150,7 +189,7 @@ class CardController {
 
     // For physical cards, limit one per network
     if (cardForm === 'PHYSICAL' && existingCard) {
-      throw new AppError(`You already have a ${cardNetwork} ${cardForm.toLowerCase()} card`, 400);
+      throw new AppError(`You already have a ${finalCardNetwork} ${cardForm.toLowerCase()} card`, 400);
     }
 
     const existingCards = await prisma.card.count({
@@ -166,11 +205,9 @@ class CardController {
         cvv,
         cardType,
         cardForm,
-        cardNetwork,
-        bank,
+        cardNetwork: finalCardNetwork,
         creditLimit: creditLimit ? parseFloat(creditLimit) : null,
         currency,
- 
         isDefault: existingCards === 0
       },
       select: {
@@ -185,8 +222,6 @@ class CardController {
         status: true,
         balance: true,
         creditLimit: true,
-        bank: true,
-      
         isDefault: true,
         createdAt: true
       }
@@ -198,7 +233,7 @@ class CardController {
       data: {
         card: {
           ...card,
-          cardNumber: card.cardNumber
+          cardNumber: CardValidator.maskCardNumber(card.cardNumber)
         }
       }
     });
@@ -228,9 +263,9 @@ class CardController {
 
     // Validate card network if provided
     if (cardNetwork) {
-      const validNetworks = ['VISA', 'MASTERCARD', 'MADA'];
+      const validNetworks = ['VISA', 'MASTERCARD', 'MADA', 'AMEX', 'DISCOVER'];
       if (!validNetworks.includes(cardNetwork)) {
-        throw new AppError('Invalid card network. Must be one of: VISA, MASTERCARD, MADA', 400);
+        throw new AppError('Invalid card network. Must be one of: VISA, MASTERCARD, MADA, AMEX, DISCOVER', 400);
       }
     }
 
@@ -264,7 +299,6 @@ class CardController {
         status: true,
         balance: true,
         creditLimit: true,
-        bank: true,
         isDefault: true,
         updatedAt: true
       }
@@ -276,7 +310,7 @@ class CardController {
       data: {
         card: {
           ...updatedCard,
-          cardNumber: updatedCard.cardNumber
+          cardNumber: CardValidator.maskCardNumber(updatedCard.cardNumber)
         }
       }
     });
@@ -305,7 +339,7 @@ class CardController {
       data: { status: 'BLOCKED' }
     });
 
-    console.log(`Card ${card.cardNumber} (${card.cardNetwork}) blocked by user ${userId}. Reason: ${reason || 'Not specified'}`);
+    console.log(`Card ${CardValidator.maskCardNumber(card.cardNumber)} (${card.cardNetwork}) blocked by user ${userId}. Reason: ${reason || 'Not specified'}`);
 
     res.json({
       success: true,
@@ -313,7 +347,7 @@ class CardController {
       data: {
         card: {
           ...updatedCard,
-          cardNumber: updatedCard.cardNumber
+          cardNumber: CardValidator.maskCardNumber(updatedCard.cardNumber)
         }
       }
     });
@@ -347,7 +381,7 @@ class CardController {
       data: {
         card: {
           ...updatedCard,
-          cardNumber: updatedCard.cardNumber
+          cardNumber: CardValidator.maskCardNumber(updatedCard.cardNumber)
         }
       }
     });
@@ -404,15 +438,15 @@ class CardController {
     });
   }
 
-  // Card expense statistics with network breakdown
+  // Card expense statistics (updated to remove bank references)
   async getCardExpenseStatistics(userId) {
     const cards = await prisma.card.findMany({
       where: { userId },
-      select: { id: true, bank: true, cardNetwork: true }
+      select: { id: true, cardNetwork: true, cardType: true }
     });
 
-    const bankExpenses = {};
     const networkExpenses = {};
+    const typeExpenses = {};
 
     for (const card of cards) {
       const expenses = await prisma.transaction.aggregate({
@@ -426,19 +460,12 @@ class CardController {
 
       const amount = Number(expenses._sum.amount || 0);
 
-      // Group by bank
-      bankExpenses[card.bank] = (bankExpenses[card.bank] || 0) + amount;
-
       // Group by card network
       networkExpenses[card.cardNetwork] = (networkExpenses[card.cardNetwork] || 0) + amount;
-    }
 
-    // Format bank expenses
-    const bankExpenseData = Object.entries(bankExpenses).map(([bank, amount]) => ({
-      bank,
-      amount,
-      percentage: 0
-    }));
+      // Group by card type
+      typeExpenses[card.cardType] = (typeExpenses[card.cardType] || 0) + amount;
+    }
 
     // Format network expenses
     const networkExpenseData = Object.entries(networkExpenses).map(([network, amount]) => ({
@@ -447,22 +474,29 @@ class CardController {
       percentage: 0
     }));
 
-    const totalBankExpenses = bankExpenseData.reduce((sum, item) => sum + item.amount, 0);
+    // Format type expenses
+    const typeExpenseData = Object.entries(typeExpenses).map(([type, amount]) => ({
+      type,
+      amount,
+      percentage: 0
+    }));
+
     const totalNetworkExpenses = networkExpenseData.reduce((sum, item) => sum + item.amount, 0);
+    const totalTypeExpenses = typeExpenseData.reduce((sum, item) => sum + item.amount, 0);
 
     // Calculate percentages
-    bankExpenseData.forEach(item => {
-      item.percentage = totalBankExpenses > 0 ? ((item.amount / totalBankExpenses) * 100).toFixed(1) : 0;
-    });
-
     networkExpenseData.forEach(item => {
       item.percentage = totalNetworkExpenses > 0 ? ((item.amount / totalNetworkExpenses) * 100).toFixed(1) : 0;
     });
 
+    typeExpenseData.forEach(item => {
+      item.percentage = totalTypeExpenses > 0 ? ((item.amount / totalTypeExpenses) * 100).toFixed(1) : 0;
+    });
+
     return {
-      totalExpenses: totalBankExpenses,
-      byBank: bankExpenseData,
-      byNetwork: networkExpenseData // Added network breakdown
+      totalExpenses: totalNetworkExpenses,
+      byNetwork: networkExpenseData,
+      byType: typeExpenseData
     };
   }
 }

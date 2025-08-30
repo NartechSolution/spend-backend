@@ -3,6 +3,8 @@
 const { AppError } = require('../utils/errors');
 
 const adminMiddleware = (req, res, next) => {
+  console.log('Headers:', req.headers);
+console.log('User:', req.user); 
   if (!req.user) {
     throw new AppError('Authentication required', 401);
   }

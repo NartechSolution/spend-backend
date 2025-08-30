@@ -322,7 +322,9 @@ router.post('/admin/plans',
   [
     body('name').notEmpty().trim().isLength({ min: 2, max: 100 }),
     body('displayName').notEmpty().trim().isLength({ min: 2, max: 200 }),
- body('type').optional().isString().isLength({ min: 1, max: 50 }),
+    // type should not optional
+    body('type').isString().isLength({ min: 1, max: 50 }),
+
     body('monthlyPrice').isDecimal({ decimal_digits: '0,2' }),
     body('yearlyPrice').isDecimal({ decimal_digits: '0,2' }),
     body('currency').optional().isLength({ min: 3, max: 3 }),

@@ -342,6 +342,188 @@ class EmailService {
 
   // 
   // Replace the sendWelcomeEmailWithCredentials method with this corrected version:
+async sendPaymentSubmissionNotification(email, firstName, lastName, planName, amount, billingCycle, transactionId) {
+    const subject = 'Payment Submission Received - Under Review';
+    
+    const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <div style="background-color: #f8f9fa; padding: 20px; text-align: center;">
+        <h1 style="color: #333; margin: 0;">Payment Submission Received</h1>
+      </div>
+      
+      <div style="padding: 30px; background-color: white;">
+        <p style="font-size: 16px; color: #333;">Dear ${firstName} ${lastName},</p>
+        
+        <p style="font-size: 16px; color: #333; line-height: 1.6;">
+          Thank you for submitting your payment for the <strong>${planName}</strong> subscription. 
+          We have received your payment proof and it is currently under review by our team.
+        </p>
+
+        <div style="background-color: #e3f2fd; padding: 20px; border-radius: 8px; margin: 20px 0;">
+          <h3 style="color: #1976d2; margin-top: 0;">Order Summary</h3>
+          <p><strong>Plan:</strong> ${planName}</p>
+          <p><strong>Billing Cycle:</strong> ${billingCycle}</p>
+          <p><strong>Amount:</strong> $${amount}</p>
+          <p><strong>Transaction ID:</strong> ${transactionId}</p>
+          <p><strong>Status:</strong> Under Review</p>
+        </div>
+
+        <div style="background-color: #fff3cd; padding: 15px; border-radius: 8px; border-left: 4px solid #ffc107;">
+          <h4 style="color: #856404; margin-top: 0;">What happens next?</h4>
+          <ul style="color: #856404; padding-left: 20px;">
+            <li>Our team will review your payment proof within 24-48 hours</li>
+            <li>Once approved, you'll receive your login credentials via email</li>
+            <li>You'll then be able to access all features of your selected plan</li>
+          </ul>
+        </div>
+
+        <p style="font-size: 16px; color: #333; margin-top: 30px;">
+          If you have any questions, please don't hesitate to contact our support team.
+        </p>
+
+        <p style="font-size: 16px; color: #333;">
+          Best regards,<br>
+          The Team
+        </p>
+      </div>
+      
+      <div style="background-color: #f8f9fa; padding: 20px; text-align: center; font-size: 14px; color: #666;">
+        <p>This is an automated message. Please do not reply to this email.</p>
+      </div>
+    </div>
+    `;
+
+    return await this.sendMail(email, subject, html);
+  }
+
+  /**
+   * Send payment decline notification to user
+   */
+  async sendPaymentDeclineNotification(email, firstName, planName, reason) {
+    const subject = 'Payment Declined - Action Required';
+    
+    const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <div style="background-color: #f8f9fa; padding: 20px; text-align: center;">
+        <h1 style="color: #dc3545; margin: 0;">Payment Declined</h1>
+      </div>
+      
+      <div style="padding: 30px; background-color: white;">
+        <p style="font-size: 16px; color: #333;">Dear ${firstName},</p>
+        
+        <p style="font-size: 16px; color: #333; line-height: 1.6;">
+          We regret to inform you that your payment for the <strong>${planName}</strong> subscription has been declined.
+        </p>
+
+        <div style="background-color: #f8d7da; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #dc3545;">
+          <h3 style="color: #721c24; margin-top: 0;">Decline Reason</h3>
+          <p style="color: #721c24; margin: 0;">${reason}</p>
+        </div>
+
+        <div style="background-color: #d1ecf1; padding: 15px; border-radius: 8px; border-left: 4px solid #17a2b8;">
+          <h4 style="color: #0c5460; margin-top: 0;">What you can do:</h4>
+          <ul style="color: #0c5460; padding-left: 20px;">
+            <li>Review your payment proof and ensure it's clear and valid</li>
+            <li>Submit a new payment with correct information</li>
+            <li>Contact our support team for assistance</li>
+          </ul>
+        </div>
+
+        <p style="font-size: 16px; color: #333; margin-top: 30px;">
+          If you believe this is an error or need help with your payment, please contact our support team immediately.
+        </p>
+
+        <div style="text-align: center; margin: 30px 0;">
+          <a href="#" style="background-color: #007bff; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block;">
+            Try Payment Again
+          </a>
+        </div>
+
+        <p style="font-size: 16px; color: #333;">
+          Best regards,<br>
+          The Team
+        </p>
+      </div>
+      
+      <div style="background-color: #f8f9fa; padding: 20px; text-align: center; font-size: 14px; color: #666;">
+        <p>This is an automated message. Please do not reply to this email.</p>
+      </div>
+    </div>
+    `;
+
+    return await this.sendMail(email, subject, html);
+  }
+
+  /**
+   * Enhanced welcome email with credentials (only sent after approval)
+   */
+  async sendWelcomeEmailWithCredentials(email, password, firstName, lastName, phone, companyName, subscriptionData, transactionId) {
+    const subject = 'Welcome! Your Account is Now Active';
+    
+    const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <div style="background-color: #28a745; color: white; padding: 20px; text-align: center;">
+        <h1 style="margin: 0;">🎉 Welcome to Our Platform!</h1>
+        <p style="margin: 10px 0 0 0; font-size: 16px;">Your payment has been approved and your account is now active</p>
+      </div>
+      
+      <div style="padding: 30px; background-color: white;">
+        <p style="font-size: 16px; color: #333;">Dear ${firstName} ${lastName},</p>
+        
+        <p style="font-size: 16px; color: #333; line-height: 1.6;">
+          Congratulations! Your payment has been successfully verified and approved. Your account is now active and ready to use.
+        </p>
+
+        <div style="background-color: #d4edda; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #28a745;">
+          <h3 style="color: #155724; margin-top: 0;">🔐 Your Login Credentials</h3>
+          <p style="margin: 10px 0;"><strong>Email:</strong> ${email}</p>
+          <p style="margin: 10px 0;"><strong>Password:</strong> <code style="background-color: #f8f9fa; padding: 4px 8px; border-radius: 4px; font-family: monospace;">${password}</code></p>
+          <p style="font-size: 14px; color: #856404; background-color: #fff3cd; padding: 10px; border-radius: 4px; margin-top: 15px;">
+            <strong>Security Note:</strong> Please change your password after your first login for security purposes.
+          </p>
+        </div>
+
+        <div style="background-color: #e3f2fd; padding: 20px; border-radius: 8px; margin: 20px 0;">
+          <h3 style="color: #1976d2; margin-top: 0;">📋 Subscription Details</h3>
+          <p><strong>Plan:</strong> ${subscriptionData?.plan || 'N/A'}</p>
+          <p><strong>Status:</strong> Active</p>
+          <p><strong>Billing Cycle:</strong> ${subscriptionData?.billingCycle || 'N/A'}</p>
+          <p><strong>Start Date:</strong> ${subscriptionData?.startDate ? new Date(subscriptionData.startDate).toDateString() : 'Today'}</p>
+          <p><strong>End Date:</strong> ${subscriptionData?.endDate ? new Date(subscriptionData.endDate).toDateString() : 'N/A'}</p>
+        </div>
+
+        ${subscriptionData?.services && subscriptionData.services.length > 0 ? `
+        <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
+          <h3 style="color: #333; margin-top: 0;">✨ Available Features</h3>
+          <ul style="color: #333; padding-left: 20px;">
+            ${subscriptionData.services.map(service => `<li>${service}</li>`).join('')}
+          </ul>
+        </div>
+        ` : ''}
+
+        <div style="text-align: center; margin: 30px 0;">
+          <a href="#" style="background-color: #007bff; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; display: inline-block; font-size: 16px;">
+            Login to Your Account
+          </a>
+        </div>
+        <p style="font-size: 16px; color: #333;">
+          Best regards,<br>
+          The Team
+        </p>
+      </div>
+            
+      <div style="background-color: #f8f9fa; padding: 20px; text-align: center; font-size: 14px; color: #666;">
+        <p>This is an automated message. Please do not reply to this email.</p>
+        <p style="margin: 5px 0 0 0;">&copy; ${new Date().getFullYear()} Your Company. All rights reserved.</p>
+      </div>
+    </div>
+    `;
+    return await this.sendMail(email, subject, html);
+  }
+
+
+
+
 
 async sendWelcomeEmailWithCredentials(email, password, firstName, lastName, phone, companyName, subscriptionData, transactionId) {
   const currentDate = new Date().toLocaleDateString('en-US', { 

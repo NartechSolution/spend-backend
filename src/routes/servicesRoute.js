@@ -5,7 +5,7 @@ const ServiceController = require('../controllers/servicesController');
 
 const authMiddleware = require('../middleware/authMiddleware');
 const adminMiddleware = require('../middleware/adminMiddleware');
-const upload = require('../middleware/upload'); // For file uploads
+const {upload} = require('../middleware/upload'); // For file uploads
 
 const router = express.Router();
 

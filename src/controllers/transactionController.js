@@ -64,7 +64,7 @@ class TransactionController {
             select: { accountNumber: true }
           },
           card: {
-            select: { cardNumber: true, bank: true }
+            select: { cardNumber: true , cardType: true }
           }
         }
       }),
@@ -118,7 +118,7 @@ class TransactionController {
       select: { accountNumber: true }
     },
     card: {
-      select: { cardNumber: true, bank: true, cardType: true }
+      select: { cardNumber: true,  cardType: true }
     }
   }
 });
@@ -197,6 +197,10 @@ async createTransaction(req, res) {
       break;
     
     case 'WITHDRAWAL':
+      if (!senderAccountId && !cardId) {
+        throw new AppError('Withdrawal requires a sender account or card', 400);
+      }
+      break;
     case 'PAYMENT':
       if (!senderAccountId && !cardId) {
         throw new AppError(`${type.toLowerCase()} requires a sender account or card`, 400);
@@ -295,6 +299,8 @@ async createTransaction(req, res) {
 // Process transaction (update balances, etc.)
 async processTransaction(transaction, prismaClient) {
   const { id, type, amount, senderAccountId, receiverAccountId, cardId } = transaction;
+  console.log("Processing transaction:", amount, type, senderAccountId, receiverAccountId, cardId);
+
 
   try {
     switch (type) {
@@ -340,11 +346,14 @@ async processTransaction(transaction, prismaClient) {
         break;
 
       case 'WITHDRAWAL':
-        // For withdrawals, money is taken from the sender account
+        // For withdrawals, money is taken from the sender 
+        
         if (senderAccountId) {
           const account = await prismaClient.account.findUnique({
             where: { id: senderAccountId }
           });
+          console.log("account", account)
+          
           if (account.balance < amount) {
             throw new AppError('Insufficient balance', 400);
           }
@@ -358,6 +367,7 @@ async processTransaction(transaction, prismaClient) {
           const card = await prismaClient.card.findUnique({
             where: { id: cardId }
           });
+          console.log("card",card)
           if (card.balance < amount) {
             throw new AppError('Insufficient card balance', 400);
           }
@@ -665,7 +675,7 @@ async downloadReceipt(req, res) {
         card: {
           select: {
             cardNumber: true,
-            bank: true,
+      
             cardType: true,
             expiryDate: true
           }

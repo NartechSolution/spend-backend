@@ -25,6 +25,7 @@ const subscriptionRoute = require("./src/routes/subscriptionRoute")
 const checkoutRoute = require('./src/routes/checkoutRoute');
 const appAuthRoute = require('./src/routes/appAuthRoute')
 const serviceRoute = require('./src/routes/servicesRoute')
+const dynamicRoute=require('./src/routes/dynamicControllerRoute')
 
 // Import middleware
 const errorHandler = require('./src/middleware/errorHandler');
@@ -58,7 +59,12 @@ app.get('/health', (req, res) => {
   });
 });
 
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/uploads', (req, res, next) => {
+  // Allow images to be loaded from any origin
+  res.setHeader('Access-Control-Allow-Origin', '*'); 
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  next();
+}, express.static(path.join(__dirname, 'uploads')));
 
 // API routes
 const apiVersion = process.env.API_VERSION || 'v1';
@@ -77,6 +83,7 @@ app.use(`/api/${apiVersion}/services`, serviceRoute);
 // checkout routes
 
 app.use(`/api/${apiVersion}/checkout`, checkoutRoute);
+app.use(`/api/${apiVersion}/dynamic`,dynamicRoute)
 
 
 // 404 handler

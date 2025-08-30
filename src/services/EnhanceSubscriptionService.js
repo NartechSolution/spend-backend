@@ -392,10 +392,7 @@ async addServicesToPlan(planId, serviceIds) {
         throw new Error('Name, displayName, and type are required');
       }
 
-      if (!['FREE', 'MEMBER', 'ADMIN'].includes(type)) {
-        throw new Error('Invalid plan type. Must be FREE, MEMBER, or ADMIN');
-      }
-
+     
       const planCreateData = {
         name: name.trim(),
         displayName: displayName.trim(),
@@ -543,46 +540,52 @@ async addServicesToPlan(planId, serviceIds) {
     };
   }
 
-  // this.enhancedSubscriptionService.deletePlan(id); 
-  async isPlanInUse(planId) {
-    try {
-      return await this.prisma.$transaction(async (tx) => {
-        // Check for active subscriptions
-        const activeSubscriptions = await tx.userSubscription.count({
-          where: {
-            planId,
-            status: { in: ['ACTIVE', 'TRIAL'] }
-          }
-        });
-
-        if (activeSubscriptions > 0) {
-          throw new Error('Cannot delete plan with active subscriptions');
-        }
-
-        // Delete plan services associations
-        await tx.planService.deleteMany({
-          where: { planId }
-        });
-
-        // Delete the plan
-        await tx.subscriptionPlan.delete({
-          where: { id: planId }
-        });
-
-        return {
-          success: true,
-          message: 'Plan deleted successfully',
-          affectedSubscriptions: activeSubscriptions
-        };
-      });
-    } catch (error) {
-      console.error('Delete plan error:', error);
-      if (error.code === 'P2025') {
-        throw new Error('Plan not found');
-      }
-      throw error;
+async isPlanInUse(planId) {
+  try {
+    // Check if plan exists first
+    const plan = await this.prisma.subscriptionPlan.findUnique({
+      where: { id: planId }
+    });
+    
+    if (!plan) {
+      throw new Error('Plan not found');
     }
+
+    // Check for active subscriptions
+    const activeSubscriptions = await this.prisma.userSubscription.count({
+      where: {
+        planId,
+        status: { in: ['ACTIVE', 'TRIAL'] }
+      }
+    });
+
+    if (activeSubscriptions > 0) {
+      throw new Error('Cannot delete plan with active subscriptions');
+    }
+
+    // If no active subscriptions, proceed with deletion
+    return await this.prisma.$transaction(async (tx) => {
+      // Delete plan services associations
+      await tx.planService.deleteMany({
+        where: { planId }
+      });
+
+      // Delete the plan
+      await tx.subscriptionPlan.delete({
+        where: { id: planId }
+      });
+
+      return {
+        success: true,
+        message: 'Plan deleted successfully',
+        affectedSubscriptions: activeSubscriptions
+      };
+    });
+  } catch (error) {
+    console.error('Delete plan error:', error);
+    throw error;
   }
+}
   // Debug method to check what's actually in the database
   async debugPlanServices(planId) {
     try {

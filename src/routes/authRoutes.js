@@ -5,7 +5,7 @@ const { body } = require('express-validator');
 
 const rateLimiter = require('../middleware/rateLimiter');
 const authcontroller = require('../controllers/authController');
-const upload = require('../middleware/upload');
+const { upload } = require('../middleware/upload');
 
 
 const router = express.Router();

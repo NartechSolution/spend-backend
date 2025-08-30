@@ -50,6 +50,7 @@ model User {
   createdAt        DateTime            @default(now())
   updatedAt        DateTime            @updatedAt
   
+   payments         Payment[]
   accounts         Account[]
   cards            Card[]
   investments      Investment[]
@@ -234,9 +235,20 @@ model Payment {
   amount         Decimal      @db.Decimal(15, 2)
   paymentStatus  String       @default("PENDING")
   paymentProof   String?
+  paymentMethod     String?  // Visa, Mastercard, etc.
+  cardHolderName    String?
+  cardLastFour      String?  // Last 4 digits of card
+  billingAddress    String?    // Store address as JSON
+  declineReason     String?  // Reason for decline if applicable
+  
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
-  subscription UserSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  
+  // Keep the user relation with Cascade (primary relationship)
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Change subscription relation to NoAction to break the cycle
+  subscription UserSubscription @relation(fields: [subscriptionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@map("payments")
 }
@@ -391,6 +403,148 @@ model SystemSettings {
   @@map("system_settings")
 }
 
+// Trust Indicators Section
+model TrustIndicator {
+  id          String    @id @default(uuid())
+  companyName String
+  logoUrl     String
+  websiteUrl  String?
+  sortOrder   Int       @default(0)
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  
+  @@map("trust_indicators")
+}
+
+// FAQ Section
+model FAQ {
+  id          String    @id @default(uuid())
+  question    String
+  answer      String    @db.Text
+  category    String?   // general, billing, technical, etc.
+  sortOrder   Int       @default(0)
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  
+  @@map("faqs")
+}
+
+// Stats Section
+model Statistic {
+  id          String    @id @default(uuid())
+  title       String    // e.g., "120K+"
+  description String    // e.g., "Our platform is a trusted choice..."
+  icon        String?   // emoji or icon class
+  value       String    // the actual number/value
+  category    String?   // users, rating, countries, etc.
+  sortOrder   Int       @default(0)
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  
+  @@map("statistics")
+}
+
+// App Download Section
+model AppDownload {
+  id              String    @id @default(uuid())
+  title           String    // Main heading
+  description     String    @db.Text // Subtitle/description
+  androidUrl      String?   // Google Play Store URL
+  iosUrl          String?   // App Store URL
+  androidLabel    String?   // Button text for Android
+  iosLabel        String?   // Button text for iOS
+  backgroundImage String?   // Background image URL
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  @@map("app_downloads")
+}
+
+// Footer Content
+model FooterSection {
+  id          String        @id @default(uuid())
+  sectionName String        // e.g., "Quick Links", "Products", "Company"
+  title       String        // Display title
+  sortOrder   Int           @default(0)
+  isActive    Boolean       @default(true)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  
+  footerLinks FooterLink[]
+  
+  @@map("footer_sections")
+}
+
+model FooterLink {
+  id            String        @id @default(uuid())
+  sectionId     String
+  title         String
+  url           String
+  isExternal    Boolean       @default(false)
+  sortOrder     Int           @default(0)
+  isActive      Boolean       @default(true)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  
+  section       FooterSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  
+  @@map("footer_links")
+}
+
+// Footer Company Info
+model FooterCompanyInfo {
+  id            String    @id @default(uuid())
+  companyName   String
+  logoUrl       String?
+  description   String    @db.Text
+  email         String?
+  phone         String?
+  address       String?
+  socialLinks   String?   // JSON string of social media links
+  copyrightText String?
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  @@map("footer_company_info")
+}
+
+// Features Section
+model Feature {
+  id          String    @id @default(uuid())
+  title       String
+  description String    @db.Text
+  iconUrl     String?   // Icon image URL
+  iconClass   String?   // CSS class for icon
+  category    String?   // main_features, secondary_features, etc.
+  sortOrder   Int       @default(0)
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  
+  @@map("features")
+}
+
+// Content Management for dynamic text content
+model PageContent {
+  id          String    @id @default(uuid())
+  pageName    String    // landing_page, about_page, etc.
+  sectionName String    // hero_section, features_section, etc.
+  key         String    // title, subtitle, description, etc.
+  value       String    @db.Text
+  dataType    String    @default("text") // text, html, json, image
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  
+  @@unique([pageName, sectionName, key])
+  @@map("page_content")
+}
+
 model Card {
   id             String        @id @default(uuid())
   userId         String
@@ -405,7 +559,7 @@ model Card {
   status         String        @default("ACTIVE")
   balance        Decimal       @default(0) @db.Decimal(15, 2)
   creditLimit    Decimal?      @db.Decimal(15, 2)
-  bank           String
+
   isDefault      Boolean       @default(false)
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
