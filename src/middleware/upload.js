@@ -131,8 +131,8 @@ const deleteFile = (filePath) => {
 // Helper function to get file URL
 const getFileUrl = (filePath, req) => {
   if (!filePath) return null;
-  const normalizedPath = filePath.replace(/\\/g, '/');
-  return `${req.protocol}://${req.get('host')}/${normalizedPath}`;
+  // Return relative path instead of full URL
+  return `/${filePath.replace(/\\/g, '/')}`;
 };
 
 module.exports = { 
