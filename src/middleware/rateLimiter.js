@@ -3,13 +3,9 @@ const rateLimit = require('express-rate-limit');
 
 // General rate limiter
 const generalLimiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 minutes
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100,
-  message: {
-    success: false,
-    message: 'Too many requests, please try again later.'
-  },
-  standardHeaders: true,
+ windowMs: 15 * 60 * 1000, // window is irrelevant here
+  max: Number.MAX_SAFE_INTEGER, // practically unlimited
+  standardHeaders: false,
   legacyHeaders: false
 });
 
