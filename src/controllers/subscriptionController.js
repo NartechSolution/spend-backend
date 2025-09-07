@@ -60,18 +60,21 @@ async getPlans(req, res) {
     
     let plans;
     if (includeServices === 'true') {
-      // Make sure you're calling the right service method
       plans = await this.enhancedSubscriptionService.getAllActivePlansWithServices({ includeServices: true });
     } else {
       plans = await this.subscriptionService.getAllActivePlans();
     }
 
-    // Debug: Log the raw response to see what's being returned
-    console.log('Plans response:', JSON.stringify(plans, null, 2));
+    // Ensure we always return an array
+    const plansArray = Array.isArray(plans) ? plans : [];
     
+    console.log('Plans to return:', JSON.stringify(plansArray, null, 2));
+    
+    // Always return consistent format
     res.json({
       success: true,
-      data: plans,
+      data: plansArray,
+      count: plansArray.length,
       timestamp: new Date().toISOString()
     });
   } catch (error) {
@@ -79,6 +82,7 @@ async getPlans(req, res) {
     return this.sendErrorResponse(res, 500, 'Failed to fetch subscription plans', error);
   }
 }
+
   // GET /api/subscriptions/plans/:id/services - Get services for a specific plan
   async getPlanServices(req, res) {
     try {
@@ -280,69 +284,143 @@ async getPlans(req, res) {
   // PLAN MANAGEMENT ENDPOINTS FOR ADMIN
 
   // POST /api/subscriptions/admin/plans - Create new subscription plan
-  async createPlan(req, res) {
-    try {
-      // Check admin role
-      if (req.user.role !== 'ADMIN') {
-        return this.sendErrorResponse(res, 403, 'Admin access required');
-      }
-
-      const validationError = this.validateRequest(req, res);
-      if (validationError) return validationError;
-
-      const planData = {
-        ...req.body,
-        createdBy: req.user.id
-      };
-
-      const newPlan = await this.enhancedSubscriptionService.createPlan(planData);
-
-      res.status(201).json({
-        success: true,
-        data: newPlan,
-        message: 'Subscription plan created successfully',
-        timestamp: new Date().toISOString()
-      });
-    } catch (error) {
-      console.error('Create plan error:', error);
-      return this.sendErrorResponse(res, 500, error.message || 'Failed to create plan', error);
+ async createPlan(req, res) {
+  try {
+    // Check admin role
+    if (req.user.role !== 'ADMIN') {
+      return this.sendErrorResponse(res, 403, 'Admin access required');
     }
+
+    const validationError = this.validateRequest(req, res);
+    if (validationError) return validationError;
+
+    // Validate required fields
+    const { name, displayName, type, currency = 'SAR', isActive = true } = req.body;
+    
+    if (!name || !displayName || !type) {
+      return this.sendErrorResponse(res, 400, 'Name, displayName, and type are required fields');
+    }
+
+    const planData = {
+      name: name.trim(),
+      displayName: displayName.trim(),
+      description: req.body.description?.trim() || null,
+      yearlyPrice: parseFloat(req.body.yearlyPrice) || 0,
+      monthlyPrice: parseFloat(req.body.monthlyPrice) || 0,
+      trialDays: parseInt(req.body.trialDays) || 14,
+      maxUsers: parseInt(req.body.maxUsers) || 1,
+      currency: currency,
+      type: type.toUpperCase(),
+      isActive: Boolean(isActive),
+      features: Array.isArray(req.body.features) 
+        ? req.body.features 
+        : (typeof req.body.features === 'string' 
+          ? req.body.features.split(',').map(f => f.trim()).filter(f => f)
+          : []),
+      createdBy: req.user.id
+    };
+
+    console.log('Creating plan with data:', planData);
+
+    const newPlan = await this.enhancedSubscriptionService.createPlan(planData);
+    
+    console.log('Plan created successfully:', newPlan);
+
+    // Return the created plan data
+    res.status(201).json({
+      success: true,
+      data: newPlan,
+      message: 'Subscription plan created successfully',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Create plan error:', error);
+    
+    // Handle specific database errors
+    if (error.code === 'P2002' && error.meta?.target?.includes('name')) {
+      return this.sendErrorResponse(res, 409, 'A plan with this name already exists');
+    }
+    
+    return this.sendErrorResponse(res, 500, error.message || 'Failed to create plan', error);
   }
+}
+
 
   // PUT /api/subscriptions/admin/plans/:id - Update subscription plan
-  async updatePlan(req, res) {
-    try {
-      // Check admin role
-      if (req.user.role !== 'ADMIN') {
-        return this.sendErrorResponse(res, 403, 'Admin access required');
-      }
-
-      const validationError = this.validateRequest(req, res);
-      if (validationError) return validationError;
-
-      const { id } = req.params;
-      const updateData = {
-        ...req.body,
-        updatedBy: req.user.id
-      };
-
-      if (!id) {
-        return this.sendErrorResponse(res, 400, 'Plan ID is required');
-      }
-
-      const updatedPlan = await this.enhancedSubscriptionService.updatePlan(id, updateData);
-
-      res.json({
-        success: true,
-        data: updatedPlan,
-        message: 'Subscription plan updated successfully',
-        timestamp: new Date().toISOString()
-      });
-    } catch (error) {
-      console.error('Update plan error:', error);
-      return this.sendErrorResponse(res, 500, error.message || 'Failed to update plan', error);
+// PUT /api/subscriptions/admin/plans/:id - Update subscription plan
+async updatePlan(req, res) {
+  try {
+    // Check admin role
+    if (req.user.role !== 'ADMIN') {
+      return this.sendErrorResponse(res, 403, 'Admin access required');
     }
+
+    const validationError = this.validateRequest(req, res);
+    if (validationError) return validationError;
+
+    const { id } = req.params;
+    
+    if (!id) {
+      return this.sendErrorResponse(res, 400, 'Plan ID is required');
+    }
+
+    // Check if plan exists
+    const existingPlan = await this.subscriptionService.getPlanById(id);
+    if (!existingPlan) {
+      return this.sendErrorResponse(res, 404, 'Plan not found');
+    }
+
+    const updateData = {
+      name: req.body.name?.trim(),
+      displayName: req.body.displayName?.trim(),
+      description: req.body.description?.trim() || null,
+      yearlyPrice: req.body.yearlyPrice !== undefined ? parseFloat(req.body.yearlyPrice) : undefined,
+      monthlyPrice: req.body.monthlyPrice !== undefined ? parseFloat(req.body.monthlyPrice) : undefined,
+      trialDays: req.body.trialDays !== undefined ? parseInt(req.body.trialDays) : undefined,
+      maxUsers: req.body.maxUsers !== undefined ? parseInt(req.body.maxUsers) : undefined,
+      currency: req.body.currency,
+      type: req.body.type?.toUpperCase(),
+      isActive: req.body.isActive !== undefined ? Boolean(req.body.isActive) : undefined,
+      features: req.body.features !== undefined 
+        ? (Array.isArray(req.body.features) 
+          ? req.body.features 
+          : (typeof req.body.features === 'string' 
+            ? req.body.features.split(',').map(f => f.trim()).filter(f => f)
+            : []))
+        : undefined,
+      updatedBy: req.user.id
+    };
+
+    // Remove undefined values
+    Object.keys(updateData).forEach(key => {
+      if (updateData[key] === undefined) {
+        delete updateData[key];
+      }
+    });
+
+    console.log('Updating plan with data:', updateData);
+
+    const updatedPlan = await this.enhancedSubscriptionService.updatePlan(id, updateData);
+    
+    console.log('Plan updated successfully:', updatedPlan);
+
+    res.json({
+      success: true,
+      data: updatedPlan,
+      message: 'Subscription plan updated successfully',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Update plan error:', error);
+    
+    // Handle specific database errors
+    if (error.code === 'P2002' && error.meta?.target?.includes('name')) {
+      return this.sendErrorResponse(res, 409, 'A plan with this name already exists');
+    }
+    
+    return this.sendErrorResponse(res, 500, error.message || 'Failed to update plan', error);
   }
+}
 
   // DELETE /api/subscriptions/admin/plans/:id - Delete subscription plan
   async deletePlan(req, res) {

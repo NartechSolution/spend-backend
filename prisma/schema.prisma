@@ -584,3 +584,19 @@ model SubscriptionActivityLog {
   
   @@map("subscription_activity_logs")
 }
+
+// Dynamic Translations System
+  model Translation {
+    id          String    @id @default(uuid())
+    key         String    // e.g., "nav.home", "hero.title"
+    valueEn     String    @db.Text // English translation
+    valueAr     String    @db.Text // Arabic translation
+    category    String?   // e.g., "navigation", "hero", "footer"
+    description String?   // Description of what this translation is for
+    isActive    Boolean   @default(true)
+    createdAt   DateTime  @default(now())
+    updatedAt   DateTime  @updatedAt
+    
+    @@unique([key])
+    @@map("translations")
+  }
