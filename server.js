@@ -26,6 +26,7 @@ const checkoutRoute = require('./src/routes/checkoutRoute');
 const appAuthRoute = require('./src/routes/appAuthRoute')
 const serviceRoute = require('./src/routes/servicesRoute')
 const dynamicRoute=require('./src/routes/dynamicControllerRoute')
+const translationRoutes = require('./src/routes/translationRoutes')
 
 // Import middleware
 const errorHandler = require('./src/middleware/errorHandler');
@@ -85,6 +86,7 @@ app.use(`/api/${apiVersion}/services`, serviceRoute);
 
 app.use(`/api/${apiVersion}/checkout`, checkoutRoute);
 app.use(`/api/${apiVersion}/dynamic`,dynamicRoute)
+app.use(`/api/${apiVersion}/translations`, translationRoutes);
 
 
 // 404 handler
