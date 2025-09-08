@@ -8,7 +8,12 @@ const {
   appDownloadController,
   footerController,
   featuresController,
-  pageContentController
+  pageContentController,
+  transactionExamplesController,
+  heroStatisticsController,
+  socialMediaController,
+  contactInfoController,
+  trustedCompaniesController
 } = require('../controllers/dynamicController');
 const adminMiddleware = require('../middleware/adminMiddleware');
 const authMiddleware = require('../middleware/authMiddleware');
@@ -121,5 +126,47 @@ router.get('/page-content/:page', pageContentController.getByPage);
 router.get('/admin/page-content', authMiddleware, adminMiddleware, pageContentController.getAll);
 router.post('/admin/page-content', authMiddleware, adminMiddleware, pageContentController.upsert);
 router.delete('/admin/page-content/:id', authMiddleware, adminMiddleware, pageContentController.delete);
+
+// ===================
+// TRANSACTION EXAMPLES ROUTES
+// ===================
+router.get('/transaction-examples', transactionExamplesController.getAll);
+router.get('/admin/transaction-examples', authMiddleware, adminMiddleware, transactionExamplesController.getAllAdmin);
+router.post('/admin/transaction-examples', authMiddleware, adminMiddleware, upload.single('icon'), transactionExamplesController.create);
+router.put('/admin/transaction-examples/:id', authMiddleware, adminMiddleware, upload.single('icon'), transactionExamplesController.update);
+router.delete('/admin/transaction-examples/:id', authMiddleware, adminMiddleware, transactionExamplesController.delete);
+
+// ===================
+// HERO STATISTICS ROUTES
+// ===================
+router.get('/hero-statistics', heroStatisticsController.getAll);
+router.get('/admin/hero-statistics', authMiddleware, adminMiddleware, heroStatisticsController.getAllAdmin);
+router.post('/admin/hero-statistics', authMiddleware, adminMiddleware ,upload.none(), heroStatisticsController.create);
+router.put('/admin/hero-statistics/:id', authMiddleware, adminMiddleware, upload.none(), heroStatisticsController.update);
+router.delete('/admin/hero-statistics/:id', authMiddleware, adminMiddleware, heroStatisticsController.delete);
+
+// ===================
+// SOCIAL MEDIA LINKS ROUTES
+// ===================
+router.get('/social-media-links', socialMediaController.getAll);
+router.get('/admin/social-media-links', authMiddleware, adminMiddleware, socialMediaController.getAllAdmin);
+router.post('/admin/social-media-links', authMiddleware, adminMiddleware,upload.single('iconFile'), socialMediaController.create);
+router.put('/admin/social-media-links/:id', authMiddleware, adminMiddleware,upload.single('iconFile'), socialMediaController.update);
+router.delete('/admin/social-media-links/:id', authMiddleware, adminMiddleware, socialMediaController.delete);
+
+// ===================
+// CONTACT INFORMATION ROUTES
+// ===================
+router.get('/contact-info', contactInfoController.get);
+router.post('/admin/contact-info', authMiddleware, adminMiddleware, contactInfoController.upsert);
+
+// ===================
+// TRUSTED COMPANIES ROUTES
+// ===================
+router.get('/trusted-companies', trustedCompaniesController.getAll);
+router.get('/admin/trusted-companies', authMiddleware, adminMiddleware, trustedCompaniesController.getAllAdmin);
+router.post('/admin/trusted-companies', authMiddleware, adminMiddleware, trustedCompaniesController.create);
+router.put('/admin/trusted-companies/:id', authMiddleware, adminMiddleware, trustedCompaniesController.update);
+router.delete('/admin/trusted-companies/:id', authMiddleware, adminMiddleware, trustedCompaniesController.delete);
 
 module.exports = router;

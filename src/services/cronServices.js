@@ -88,7 +88,9 @@ class CronService {
           await prisma.user.update({
             where: { id: subscription.user.id },
             data: {
-              subscriptionStatus: 'EXPIRED'
+              subscriptionStatus: 'EXPIRED',
+              status:'INACTIVE',
+
             }
           });
 

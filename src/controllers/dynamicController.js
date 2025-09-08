@@ -961,6 +961,590 @@ const pageContentController = {
   }
 };
 
+// ===================
+// TRANSACTION EXAMPLES
+// ===================
+const transactionExamplesController = {
+  // Get all transaction examples
+  getAll: async (req, res) => {
+    try {
+      const transactions = await prisma.transactionExample.findMany({
+        where: { isActive: true },
+        orderBy: { sortOrder: 'asc' }
+      });
+      
+      // Convert file paths to full URLs
+      const transactionsWithUrls = transactions.map(transaction => ({
+        ...transaction,
+        iconUrl: transaction.icon ? getFileUrl(transaction.icon, req) : null
+      }));
+      
+      res.json({ success: true, data: transactionsWithUrls });
+    } catch (error) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  },
+
+  // Get all (admin - including inactive)
+  getAllAdmin: async (req, res) => {
+    try {
+      const transactions = await prisma.transactionExample.findMany({
+        orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }]
+      });
+      
+      // Convert file paths to full URLs
+      const transactionsWithUrls = transactions.map(transaction => ({
+        ...transaction,
+        iconUrl: transaction.icon ? getFileUrl(transaction.icon, req) : null
+      }));
+      
+      res.json({ success: true, data: transactionsWithUrls });
+    } catch (error) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  },
+
+create: async (req, res) => {
+  try {
+    // Enhanced debugging
+    console.log('=== Transaction Example Create Debug ===')
+    console.log('req.body:', req.body)
+    console.log('req.file:', req.file)
+    console.log('req.headers:', req.headers)
+    console.log('Content-Type:', req.get('Content-Type'))
+    console.log('========================================')
+    
+    const { name, subtitle, amount, sortOrder, isActive } = req.body;
+    
+    // Validate required fields with better error messages
+    if (!name) {
+      console.log('Validation failed: name is missing or empty')
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Name is required',
+        received: { name, subtitle, amount, sortOrder, isActive }
+      });
+    }
+    
+    if (!amount) {
+      console.log('Validation failed: amount is missing or empty')
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Amount is required',
+        received: { name, subtitle, amount, sortOrder, isActive }
+      });
+    }
+    
+    const transaction = await prisma.transactionExample.create({
+      data: {
+        name: String(name),
+        subtitle: subtitle ? String(subtitle) : null,
+        amount: String(amount),
+        icon: req.file ? req.file.path : null,
+        sortOrder: sortOrder ? parseInt(sortOrder, 10) : 0,
+        isActive: isActive === 'true' || isActive === true || isActive === 'false' ? isActive !== 'false' : true
+      }
+    });
+    
+    // Return with full URL
+    const transactionWithUrl = {
+      ...transaction,
+      icon: transaction.iconUrl ? getFileUrl(transaction.iconUrl, req) : null
+    };
+    
+    res.status(201).json({ success: true, data: transactionWithUrl });
+  } catch (error) {
+    console.error('Create transaction example error:', error);
+    // Delete uploaded file if database operation fails
+    if (req.file) {
+      deleteFile(req.file.path);
+    }
+    res.status(500).json({ success: false, message: error.message });
+  }
+},
+
+  // Update transaction example
+  update: async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { name, subtitle, amount, sortOrder, isActive } = req.body;
+      
+      // Log received data for debugging
+      console.log('Update received data:', { name, subtitle, amount, sortOrder, isActive });
+      console.log('File:', req.file);
+      
+      // Get current transaction to handle old file
+      const currentTransaction = await prisma.transactionExample.findUnique({
+        where: { id }
+      });
+      
+      if (!currentTransaction) {
+        if (req.file) deleteFile(req.file.path);
+        return res.status(404).json({ success: false, message: 'Transaction example not found' });
+      }
+      
+      const updateData = {
+        name: name ? String(name) : currentTransaction.name,
+        subtitle: subtitle !== undefined ? (subtitle ? String(subtitle) : null) : currentTransaction.subtitle,
+        amount: amount ? String(amount) : currentTransaction.amount,
+        sortOrder: sortOrder !== undefined ? parseInt(sortOrder, 10) : currentTransaction.sortOrder,
+        isActive: isActive !== undefined ? (isActive === 'true' || isActive === true) : currentTransaction.isActive
+      };
+      
+      // Handle file upload
+      if (req.file) {
+        // Delete old file if exists
+        if (currentTransaction.icon) {
+          deleteFile(currentTransaction.icon);
+        }
+        updateData.icon = req.file.path;
+      }
+      
+      const transaction = await prisma.transactionExample.update({
+        where: { id },
+        data: updateData
+      });
+      
+      // Return with full URL
+      const transactionWithUrl = {
+        ...transaction,
+        icon: transaction.icon ? getFileUrl(transaction.icon, req) : null
+      };
+      
+      res.json({ success: true, data: transactionWithUrl });
+    } catch (error) {
+      console.error('Update transaction example error:', error);
+      // Delete uploaded file if database operation fails
+      if (req.file) {
+        deleteFile(req.file.path);
+      }
+      res.status(500).json({ success: false, message: error.message });
+    }
+  },
+
+  // Delete transaction example
+  delete: async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      // Get transaction to delete associated file
+      const transaction = await prisma.transactionExample.findUnique({
+        where: { id }
+      });
+      
+      if (!transaction) {
+        return res.status(404).json({ success: false, message: 'Transaction example not found' });
+      }
+      
+      // Delete from database
+      await prisma.transactionExample.delete({
+        where: { id }
+      });
+      
+      // Delete associated file
+      if (transaction.iconUrl) {
+        deleteFile(transaction.iconUrl);
+      }
+      
+      res.json({ success: true, message: 'Transaction example deleted successfully' });
+    } catch (error) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  }
+};
+
+
+// ===================
+// HERO STATISTICS
+// ===================
+const heroStatisticsController = {
+  // Get all hero statistics
+  getAll: async (req, res) => {
+    try {
+      const stats = await prisma.heroStatistic.findMany({
+        where: { isActive: true },
+        orderBy: { sortOrder: 'asc' }
+      });
+      
+      res.json({ success: true, data: stats });
+    } catch (error) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  },
+
+  // Get all (admin - including inactive)
+  getAllAdmin: async (req, res) => {
+    try {
+      const stats = await prisma.heroStatistic.findMany({
+        orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }]
+      });
+      
+      res.json({ success: true, data: stats });
+    } catch (error) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  },
+
+  // Create new hero statistic
+ create: async (req, res) => {
+  try {
+    const { value, label, sortOrder, isActive } = req.body;
+
+    const stat = await prisma.heroStatistic.create({
+      data: {
+        value,
+        label,
+        sortOrder: parseInt(sortOrder) || 0,      // ✅ convert to int
+        isActive: isActive === 'true'             // ✅ convert to boolean
+      }
+    });
+
+    res.status(201).json({ success: true, data: stat });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+},
+
+  // Update hero statistic
+update: async (req, res) => {
+  try {
+    const { id } = req.params;
+    let { value, label, sortOrder, isActive } = req.body;
+
+    // Convert sortOrder safely to number
+    sortOrder = parseInt(sortOrder, 10) || 0;
+
+    // Convert isActive safely to boolean
+    if (typeof isActive === "string") {
+      isActive = isActive.toLowerCase() === "true";
+    } else {
+      isActive = !!isActive; // fallback if it's already boolean
+    }
+
+    const stat = await prisma.heroStatistic.update({
+      where: { id },
+      data: {
+        value,
+        label,
+        sortOrder,
+        isActive,
+      },
+    });
+
+    res.json({ success: true, data: stat });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+},
+
+
+  // Delete hero statistic
+  delete: async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      await prisma.heroStatistic.delete({
+        where: { id }
+      });
+      
+      res.json({ success: true, message: 'Hero statistic deleted successfully' });
+    } catch (error) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  }
+};
+
+// ===================
+// SOCIAL MEDIA LINKS
+// ===================
+// SOCIAL MEDIA LINKS
+// ===================
+const socialMediaController = {
+  // Get all social media links
+  getAll: async (req, res) => {
+    try {
+      const socialLinks = await prisma.socialMediaLink.findMany({
+        where: { isActive: true },
+        orderBy: { sortOrder: 'asc' }
+      });
+      
+      // Convert file paths to full URLs
+      const socialLinksWithUrls = socialLinks.map(link => ({
+        ...link,
+        iconUrl: link.iconUrl ? getFileUrl(link.iconUrl, req) : null
+      }));
+      
+      res.json({ success: true, data: socialLinksWithUrls });
+    } catch (error) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  },
+
+  // Get all (admin - including inactive)
+  getAllAdmin: async (req, res) => {
+    try {
+      const socialLinks = await prisma.socialMediaLink.findMany({
+        orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }]
+      });
+      
+      // Convert file paths to full URLs
+      const socialLinksWithUrls = socialLinks.map(link => ({
+        ...link,
+        iconUrl: link.iconUrl ? getFileUrl(link.iconUrl, req) : null
+      }));
+      
+      res.json({ success: true, data: socialLinksWithUrls });
+    } catch (error) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  },
+
+  // Create new social media link
+  create: async (req, res) => {
+    try {
+      const { platform, url, sortOrder, isActive } = req.body;
+      
+      const socialLink = await prisma.socialMediaLink.create({
+        data: {
+          platform,
+          url,
+          iconUrl: req.file ? req.file.path : null,
+          sortOrder: sortOrder || 0,
+          isActive: isActive !== undefined ? isActive : true
+        }
+      });
+      
+      // Return with full URL
+      const socialLinkWithUrl = {
+        ...socialLink,
+        iconUrl: socialLink.iconUrl ? getFileUrl(socialLink.iconUrl, req) : null
+      };
+      
+      res.status(201).json({ success: true, data: socialLinkWithUrl });
+    } catch (error) {
+      // Delete uploaded file if database operation fails
+      if (req.file) {
+        deleteFile(req.file.path);
+      }
+      res.status(500).json({ success: false, message: error.message });
+    }
+  },
+
+  // Update social media link
+  update: async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { platform, url, sortOrder, isActive } = req.body;
+      
+      // Get current social link to handle old file
+      const currentSocialLink = await prisma.socialMediaLink.findUnique({
+        where: { id }
+      });
+      
+      if (!currentSocialLink) {
+        if (req.file) deleteFile(req.file.path);
+        return res.status(404).json({ success: false, message: 'Social media link not found' });
+      }
+      
+      const updateData = {
+        platform,
+        url,
+        sortOrder,
+        isActive
+      };
+      
+      // Handle file upload
+      if (req.file) {
+        // Delete old file if exists
+        if (currentSocialLink.iconUrl) {
+          deleteFile(currentSocialLink.iconUrl);
+        }
+        updateData.iconUrl = req.file.path;
+      }
+      
+      const socialLink = await prisma.socialMediaLink.update({
+        where: { id },
+        data: updateData
+      });
+      
+      // Return with full URL
+      const socialLinkWithUrl = {
+        ...socialLink,
+        iconUrl: socialLink.iconUrl ? getFileUrl(socialLink.iconUrl, req) : null
+      };
+      
+      res.json({ success: true, data: socialLinkWithUrl });
+    } catch (error) {
+      // Delete uploaded file if database operation fails
+      if (req.file) {
+        deleteFile(req.file.path);
+      }
+      res.status(500).json({ success: false, message: error.message });
+    }
+  },
+
+  // Delete social media link
+  delete: async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      // Get social link to delete associated file
+      const socialLink = await prisma.socialMediaLink.findUnique({
+        where: { id }
+      });
+      
+      if (!socialLink) {
+        return res.status(404).json({ success: false, message: 'Social media link not found' });
+      }
+      
+      // Delete from database
+      await prisma.socialMediaLink.delete({
+        where: { id }
+      });
+      
+      // Delete associated file
+      if (socialLink.iconUrl) {
+        deleteFile(socialLink.iconUrl);
+      }
+      
+      res.json({ success: true, message: 'Social media link deleted successfully' });
+    } catch (error) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  }
+};
+
+// ===================
+// CONTACT INFORMATION
+// ===================
+const contactInfoController = {
+  // Get contact information
+  get: async (req, res) => {
+    try {
+      const contactInfo = await prisma.contactInfo.findFirst();
+      
+      res.json({ success: true, data: contactInfo });
+    } catch (error) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  },
+
+  // Create or update contact information
+  upsert: async (req, res) => {
+    try {
+      const { email, phone, address, workingHours } = req.body;
+      
+      const contactInfo = await prisma.contactInfo.upsert({
+        where: { id: 'default' },
+        update: {
+          email,
+          phone,
+          address,
+          workingHours
+        },
+        create: {
+          id: 'default',
+          email,
+          phone,
+          address,
+          workingHours
+        }
+      });
+      
+      res.json({ success: true, data: contactInfo });
+    } catch (error) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  }
+};
+
+// ===================
+// TRUSTED COMPANIES
+// ===================
+const trustedCompaniesController = {
+  // Get all trusted companies
+  getAll: async (req, res) => {
+    try {
+      const companies = await prisma.trustedCompany.findMany({
+        where: { isActive: true },
+        orderBy: { sortOrder: 'asc' }
+      });
+      
+      res.json({ success: true, data: companies });
+    } catch (error) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  },
+
+  // Get all (admin - including inactive)
+  getAllAdmin: async (req, res) => {
+    try {
+      const companies = await prisma.trustedCompany.findMany({
+        orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }]
+      });
+      
+      res.json({ success: true, data: companies });
+    } catch (error) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  },
+
+  // Create new trusted company
+  create: async (req, res) => {
+    try {
+      const { name, sortOrder, isActive } = req.body;
+      
+      const company = await prisma.trustedCompany.create({
+        data: {
+          name,
+          sortOrder: sortOrder || 0,
+          isActive: isActive !== undefined ? isActive : true
+        }
+      });
+      
+      res.status(201).json({ success: true, data: company });
+    } catch (error) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  },
+
+  // Update trusted company
+  update: async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { name, sortOrder, isActive } = req.body;
+      
+      const company = await prisma.trustedCompany.update({
+        where: { id },
+        data: {
+          name,
+          sortOrder,
+          isActive
+        }
+      });
+      
+      res.json({ success: true, data: company });
+    } catch (error) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  },
+
+  // Delete trusted company
+  delete: async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      await prisma.trustedCompany.delete({
+        where: { id }
+      });
+      
+      res.json({ success: true, message: 'Trusted company deleted successfully' });
+    } catch (error) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  }
+};
+
 module.exports = {
   trustIndicatorController,
   faqController,
@@ -968,5 +1552,10 @@ module.exports = {
   appDownloadController,
   footerController,
   featuresController,
-  pageContentController
+  pageContentController,
+  transactionExamplesController,
+  heroStatisticsController,
+  socialMediaController,
+  contactInfoController,
+  trustedCompaniesController
 };
