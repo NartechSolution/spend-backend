@@ -5,14 +5,11 @@ const authMiddleware = require('../middleware/authMiddleware');
 
 const router = express.Router();
 
-// Apply authentication to all dashboard routes
-router.use(authMiddleware);
-
-router.get('/overview', dashboardController.getDashboardOverview);
+// Public route (no auth required)
 router.get('/admin', dashboardController.getAdminDashboard.bind(dashboardController));
 
-router.get('/analytics', dashboardController.getFinancialAnalytics);
+// Protected routes (auth required)
+router.get('/overview', authMiddleware, dashboardController.getDashboardOverview);
+router.get('/analytics', authMiddleware, dashboardController.getFinancialAnalytics);
 
 module.exports = router;
-
-

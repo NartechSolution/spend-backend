@@ -221,9 +221,9 @@ async getFrequentContacts(userId) {
 }
   // Get admin dashboard data
   async getAdminDashboard(req, res) {
-    if (req.user.role !== 'ADMIN') {
-      throw new AppError('Access denied. Admin privileges required.', 403);
-    }
+    // if (req.user.role !== 'ADMIN') {
+    //   throw new AppError('Access denied. Admin privileges required.', 403);
+    // }
 
     const now = new Date();
     const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
